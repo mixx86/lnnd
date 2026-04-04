@@ -1,0 +1,7 @@
+# Runtime generated
+uuid.txt
+
+# Build artifacts
+*.o
+*.a
+
