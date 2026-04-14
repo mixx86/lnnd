@@ -1,29 +1,26 @@
-package server
+package ipc
 
 import (
 	"io"
-	"lnn/internal/ipc"
 	"log"
 	"net"
 	"os"
-
-	"github.com/google/uuid"
 )
 
-func handleConnUNIX(conn net.Conn, id uuid.UUID) {
+func handleConnUNIX(conn net.Conn) {
 	defer conn.Close()
 	data, err := io.ReadAll(conn)
 	if err != nil {
 		log.Fatalf("Error receiving data from the peer: %v", err)
 	}
-	req, err := ipc.ParseRequest(data)
+	req, err := ParseRequest(data)
 	if err != nil {
 		log.Fatalf("Error deserializing json data: %v", err)
 	}
-	ipc.HandleRequest(&req, id)
+	HandleRequest(&req)
 }
 
-func ListenIPC(id uuid.UUID) {
+func ListenIPC() {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	os.Remove(path)
 	ln, err := net.Listen("unix", path)
@@ -35,6 +32,6 @@ func ListenIPC(id uuid.UUID) {
 		if err != nil {
 			log.Fatalf("Error accepting the connection: %v", err)
 		}
-		go handleConnUNIX(conn, id)
+		go handleConnUNIX(conn)
 	}
 }
