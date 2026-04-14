@@ -87,12 +87,12 @@ lnn 192.168.1.34:/path/to/file.txt ./local_link  # hard link to remote file
 
 ## Roadmap
 
-- [ ] Core protocol (HELLO, peer identification)
+- [X] Core protocol (HELLO, peer identification)
 - [ ] TLS encryption
-- [ ] Basic daemon (peer management, connections)
+- [X] Basic daemon (peer management, connections)
 - [ ] Remote symlinks
 - [ ] Original `ln` features (CLI)
-- [ ] IPC (CLI ↔ daemon communication)
+- [X] IPC (CLI ↔ daemon communication)
 - [ ] `--add-peer` / `--block` / `--requests`
 - [ ] Sync mode (`--sync`)
 - [ ] Remote hard links

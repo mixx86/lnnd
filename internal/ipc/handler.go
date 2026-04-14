@@ -2,14 +2,10 @@ package ipc
 
 import (
 	"errors"
-	"lnn/internal/client"
-	"lnn/internal/protocol"
 	"log"
 	"net"
 	"path"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 func Validate(req *Request) error {
@@ -32,7 +28,7 @@ func Validate(req *Request) error {
 	return nil
 }
 
-func HandleRequest(req *Request, id uuid.UUID) {
+func HandleRequest(req *Request) {
 	switch req.Op {
 	case "link":
 		log.Printf("Operation: %v.\n", req.Op)
@@ -42,25 +38,7 @@ func HandleRequest(req *Request, id uuid.UUID) {
 		}
 		switch req.Type {
 		case "sym":
-			conn, err := client.ConnectTCP(req.IP)
-			if err != nil {
-				log.Fatalf("Connection error: %v", err)
-			}
-			defer conn.Close()
-			log.Printf("Request: %v", req)
-
-			remoteID, err := client.RecvTCP(conn)
-			if err != nil {
-				log.Fatalf("Receiving data error: %v", err)
-			}
-			log.Printf("uuid received from tcp server: %v", remoteID)
-
-			err = client.SendTCP(conn, protocol.HelloMessage{
-				ID: id,
-			})
-			if err != nil {
-				log.Fatalf("Connection error: %v", err)
-			}
+			log.Printf("Type: %v.\n", req.Type)
 		case "hard":
 			log.Printf("Type: %v.\n", req.Type)
 		default:
@@ -69,5 +47,4 @@ func HandleRequest(req *Request, id uuid.UUID) {
 	default:
 		log.Fatalf("Unknown operation: %v", req.Op)
 	}
-
 }

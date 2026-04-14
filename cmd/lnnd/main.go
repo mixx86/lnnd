@@ -2,17 +2,15 @@ package main
 
 import (
 	"lnn/internal/config"
-	"lnn/internal/peer"
-	"lnn/internal/server"
+	"lnn/internal/daemon"
 	"log"
 )
 
 func main() {
 	config.Load("configs/lnnd.conf")
-	id, err := peer.InitUUID()
+	d, err := daemon.New()
 	if err != nil {
-		log.Fatalf("Error trying to resolve uuid: %v", err)
+		log.Fatalf("Couldn't create the daemon: %v", err)
 	}
-	go server.ListenIPC(id)
-	server.ListenTCP(id)
+	d.Start()
 }
