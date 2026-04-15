@@ -7,7 +7,8 @@ import (
 	"os"
 )
 
-func handleConnUNIX(conn net.Conn) {
+// handleConnUNIX processes a single Unix socket connection.
+func HandleConnUNIX(conn net.Conn) {
 	defer conn.Close()
 	data, err := io.ReadAll(conn)
 	if err != nil {
@@ -20,6 +21,9 @@ func handleConnUNIX(conn net.Conn) {
 	HandleRequest(&req)
 }
 
+// ListenIPC starts the Unix socket listener for IPC communication.
+// Reads the socket path from LNND_IPC_SOCKET environment variable.
+// This function blocks indefinitely.
 func ListenIPC() {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	os.Remove(path)
@@ -32,6 +36,6 @@ func ListenIPC() {
 		if err != nil {
 			log.Fatalf("Error accepting the connection: %v", err)
 		}
-		go handleConnUNIX(conn)
+		go HandleConnUNIX(conn)
 	}
 }

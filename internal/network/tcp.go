@@ -11,11 +11,16 @@ import (
 	"os"
 )
 
+// ConnectTCP establishes a TCP connection to the given IP address.
+// Uses TCP_PORT environment variable for the port.
 func ConnectTCP(ip string) (net.Conn, error) {
 	port := os.Getenv("TCP_PORT")
 	return net.Dial("tcp", ip+":"+port)
 }
 
+// ListenTCP starts the TCP server and handles incoming connections.
+// Uses TCP_PORT environment variable for the port.
+// This function blocks indefinitely.
 func ListenTCP(i *identity.IdentityService, p *peer.PeerManager) {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
@@ -31,6 +36,7 @@ func ListenTCP(i *identity.IdentityService, p *peer.PeerManager) {
 	}
 }
 
+// SendTCP encodes and sends a protocol message over the connection.
 func SendTCP(conn net.Conn, data protocol.Message) error {
 	packet, err := data.Encode()
 	if err != nil {
@@ -41,7 +47,9 @@ func SendTCP(conn net.Conn, data protocol.Message) error {
 	return err
 }
 
-func RecvTCP(conn net.Conn) (protocol.Message, error) {
+// ReceiveTCP reads and parses a protocol message from the connection.
+// Returns the appropriate message type based on the header.
+func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 	header, err := protocol.ReadHeader(conn)
 	if err != nil {
 		return nil, err

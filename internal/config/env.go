@@ -1,3 +1,4 @@
+// Package config provides configuration loading utilities for the LNN daemon.
 package config
 
 import (
@@ -7,12 +8,15 @@ import (
 	"strings"
 )
 
-func Load(path string) {
-	env_file, err := os.Open(path)
+// LoadEnv reads environment variables from a file and sets them in the process.
+// The file format is KEY=VALUE, one per line.
+// Fatal error if the file cannot be opened.
+func LoadEnv(path string) {
+	envFile, err := os.Open(path)
 	if err != nil {
 		log.Fatalf("Error opening env file: %v", err)
 	}
-	scanner := bufio.NewScanner(env_file)
+	scanner := bufio.NewScanner(envFile)
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.SplitN(line, "=", 2)
