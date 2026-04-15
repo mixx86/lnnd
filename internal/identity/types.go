@@ -1,3 +1,4 @@
+// Package identity types
 package identity
 
 import (
@@ -6,12 +7,14 @@ import (
 	"github.com/google/uuid"
 )
 
-type LocalCreds struct {
+// Credentials holds the node's identity credentials.
+type Credentials struct {
 	ID      uuid.UUID
 	PrivKey ed25519.PrivateKey
 	PubKey  ed25519.PublicKey
 }
 
+// IdentityService manages node identity and credentials.
 type IdentityService struct {
-	creds LocalCreds
+	creds Credentials
 }
