@@ -2,19 +2,21 @@ package peer
 
 import (
 	"crypto/ed25519"
-	"lnn/internal/identity"
 	"net"
+	"sync"
 
 	"github.com/google/uuid"
 )
 
-type PeerConn struct {
+// Peer represents an authenticated connection to a remote peer.
+type Peer struct {
 	ID     uuid.UUID
 	PubKey ed25519.PublicKey
 	Conn   net.Conn
 }
 
-type Service struct {
-	identity *identity.IdentityService
-	peers    *PeerManager
+// PeerManager maintains a thread-safe registry of active peer connections.
+type PeerManager struct {
+	mu    sync.RWMutex
+	peers map[uuid.UUID]*Peer
 }

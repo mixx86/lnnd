@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 )
 
+// GenerateNonce creates a cryptographically random 32-byte nonce.
 func GenerateNonce() ([NonceSize]byte, error) {
 	var nonce [NonceSize]byte
 	_, err := rand.Read(nonce[:])
@@ -15,10 +16,14 @@ func GenerateNonce() ([NonceSize]byte, error) {
 	return nonce, nil
 }
 
+// ResolveNonce signs a nonce with the given private key.
+// Returns an Ed25519 signature.
 func ResolveNonce(privKey ed25519.PrivateKey, nonce [NonceSize]byte) [ChallengeRespPayloadSize]byte {
 	return [ChallengeRespPayloadSize]byte(ed25519.Sign(privKey, nonce[:]))
 }
 
+// VerifyKey verifies that a signature was created by signing the nonce with the private key
+// corresponding to the given public key.
 func VerifyKey(pubKey ed25519.PublicKey, nonce [NonceSize]byte, sig [ChallengeRespPayloadSize]byte) bool {
 	return ed25519.Verify(pubKey, nonce[:], sig[:])
 }

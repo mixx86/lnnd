@@ -1,3 +1,4 @@
+// Package daemon implements the main LNN daemon orchestration.
 package daemon
 
 import (
@@ -8,13 +9,15 @@ import (
 	"log"
 )
 
+// Daemon represents the main LNN daemon instance.
 type Daemon struct {
 	Identity *identity.IdentityService
 	Peers    *peer.PeerManager
 }
 
+// New creates and initializes a new Daemon instance.
 func New() (*Daemon, error) {
-	idSvc, err := identity.NewService()
+	identitySvc, err := identity.NewService()
 	if err != nil {
 		return nil, err
 	}
@@ -22,11 +25,13 @@ func New() (*Daemon, error) {
 	peerMgr := peer.NewPeerManager()
 
 	return &Daemon{
-		Identity: idSvc,
+		Identity: identitySvc,
 		Peers:    peerMgr,
 	}, nil
 }
 
+// Start initializes and starts all daemon services.
+// Starts the TCP network listener in a goroutine and blocks on IPC listener (so the main thread doesn't die).
 func (d *Daemon) Start() {
 	log.Println("Starting lnnd...")
 

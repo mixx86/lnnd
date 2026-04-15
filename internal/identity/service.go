@@ -1,3 +1,4 @@
+// Package identity manages node identity, including UUID and Ed25519 keypairs.
 package identity
 
 import (
@@ -14,6 +15,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// NewService creates a new IdentityService by loading or generating local credentials.
 func NewService() (*IdentityService, error) {
 	creds, err := LoadLocalCreds()
 
@@ -25,22 +27,27 @@ func NewService() (*IdentityService, error) {
 	}, nil
 }
 
-func (i *IdentityService) Creds() LocalCreds {
+// Creds returns the local node credentials.
+func (i *IdentityService) Creds() Credentials {
 	return i.creds
 }
 
-func LoadLocalCreds() (LocalCreds, error) {
+// LoadLocalCreds loads the node's UUID and cryptographic keys from disk.
+// Generates new credentials if they don't exist.
+func LoadLocalCreds() (Credentials, error) {
 	id, err := InitUUID()
 	if err != nil {
-		return LocalCreds{}, err
+		return Credentials{}, err
 	}
 	priv, pub, err := InitKeys()
 	if err != nil {
-		return LocalCreds{}, err
+		return Credentials{}, err
 	}
-	return LocalCreds{ID: id, PrivKey: priv, PubKey: pub}, nil
+	return Credentials{ID: id, PrivKey: priv, PubKey: pub}, nil
 }
 
+// InitUUID loads or generates a UUID for this node.
+// The UUID is stored in ~/.lnn/uuid.
 func InitUUID() (uuid.UUID, error) {
 	var id uuid.UUID
 	home, err := os.UserHomeDir()
@@ -72,6 +79,8 @@ func InitUUID() (uuid.UUID, error) {
 	return id, fmt.Errorf("unexpected error: %w", err)
 }
 
+// InitKeys loads or generates an Ed25519 keypair for this node.
+// Keys are stored in ~/.lnn/id_ed25519 and ~/.lnn/id_ed25519.pub.
 func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".lnn")

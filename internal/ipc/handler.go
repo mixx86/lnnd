@@ -1,3 +1,4 @@
+// Package ipc handles inter-process communication with the daemon.
 package ipc
 
 import (
@@ -8,6 +9,8 @@ import (
 	"strings"
 )
 
+// Validate checks and normalizes an IPC request.
+// Parses the IP address from the Src field and validates format.
 func Validate(req *Request) error {
 	if req.Src == "" {
 		return errors.New("You must include a source path.")
@@ -28,10 +31,10 @@ func Validate(req *Request) error {
 	return nil
 }
 
+// HandleRequest processes an incoming IPC request based on operation type.
 func HandleRequest(req *Request) {
 	switch req.Op {
 	case "link":
-		log.Printf("Operation: %v.\n", req.Op)
 		if err := Validate(req); err != nil {
 			log.Printf("Validation error: %v", err)
 			return
