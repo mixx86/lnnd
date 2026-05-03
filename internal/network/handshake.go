@@ -65,31 +65,34 @@ func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerM
 		ID:     helloMsg.ID,
 		PubKey: helloMsg.PublicKey,
 		Conn:   conn,
+		State:  peer.StateVerified,
 	})
 	return nil
 }
 
 // InBoundHandshake performs the server side of the authentication handshake.
 // Receives HELLO and CHALLENGE, sends own credentials, verifies peer identity.
-func InBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerManager) error {
-	// Send our HELLO message
+func InBoundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) (peer.Peer, error) {
+	// Receive the HELLO message
 	HelloMsg, err := ReceiveTCP(conn)
 	helloMsg, ok := HelloMsg.(protocol.HelloMessage)
 	if !ok {
-		return fmt.Errorf("Error converting the response")
+		return peer.Peer{}, fmt.Errorf("Error converting the response")
 	}
-	// Send our CHALLENGE message
+	// Receive the CHALLENGE message
 	ChallengeMsg, err := ReceiveTCP(conn)
 	challengeMsg, ok := ChallengeMsg.(protocol.ChallengeMessage)
 	if !ok {
-		return fmt.Errorf("Error converting the response")
+		return peer.Peer{}, fmt.Errorf("Error converting the response")
 	}
 
+	// Preparing the challenge
 	nonce, err := protocol.GenerateNonce()
 	if err != nil {
-		return fmt.Errorf("Error generating the nonce")
+		return peer.Peer{}, fmt.Errorf("Error generating the nonce")
 	}
 
+	// Loading our creds
 	creds := i.Creds()
 	// Send our HELLO message
 	err = SendTCP(conn, protocol.HelloMessage{
@@ -97,12 +100,12 @@ func InBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerMa
 		PublicKey: creds.PubKey,
 	})
 	if err != nil {
-		return fmt.Errorf("Error sending the HELLO message")
+		return peer.Peer{}, fmt.Errorf("Error sending the HELLO message")
 	}
 	// Send our CHALLENGE message
 	err = SendTCP(conn, protocol.ChallengeMessage{Nonce: nonce})
 	if err != nil {
-		return fmt.Errorf("Error generating the nonce")
+		return peer.Peer{}, fmt.Errorf("Error generating the nonce")
 	}
 
 	// Sign peer's challenge nonce
@@ -111,25 +114,27 @@ func InBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerMa
 		Signature: signature,
 	})
 	if err != nil {
-		return err
+		return peer.Peer{}, err
 	}
 
 	// Receive peer's challenge response
 	ChallengeRespMsg, err := ReceiveTCP(conn)
 	challengeRespMsg, ok := ChallengeRespMsg.(protocol.ChallengeRespMessage)
 	if !ok {
-		return fmt.Errorf("Invalid type of data: %v", err)
+		return peer.Peer{}, fmt.Errorf("Invalid type of data: %v", err)
 	}
 	ok = protocol.VerifyKey(helloMsg.PublicKey, nonce, challengeRespMsg.Signature)
 	if !ok {
-		return fmt.Errorf("Error verifying the key")
+		return peer.Peer{}, fmt.Errorf("Error verifying the key")
 	}
 
-	// Peer authenticated successfully, register connection
-	p.Register(&peer.Peer{
+	p := peer.Peer{
 		ID:     helloMsg.ID,
 		PubKey: helloMsg.PublicKey,
 		Conn:   conn,
-	})
-	return nil
+		State:  peer.StateVerified,
+	}
+	// Peer authenticated successfully, register connection
+	pm.Register(&p)
+	return p, nil
 }
