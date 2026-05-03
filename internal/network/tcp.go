@@ -21,7 +21,7 @@ func ConnectTCP(ip string) (net.Conn, error) {
 // ListenTCP starts the TCP server and handles incoming connections.
 // Uses TCP_PORT environment variable for the port.
 // This function blocks indefinitely.
-func ListenTCP(i *identity.IdentityService, p *peer.PeerManager) {
+func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -32,7 +32,7 @@ func ListenTCP(i *identity.IdentityService, p *peer.PeerManager) {
 		if err != nil {
 			log.Fatalf("Error accepting the connection: %v", err)
 		}
-		go HandleConnTCP(conn, i, p)
+		go HandleConnTCP(conn, i, pm)
 	}
 }
 
