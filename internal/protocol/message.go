@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"net"
 )
 
 // Message types for the LNN protocol.
@@ -57,11 +56,11 @@ var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
 const protocolVersion uint8 = 0x01
 
-// ReadHeader reads and validates a protocol header from the connection.
-func ReadHeader(conn net.Conn) (Header, error) {
+// ReadHeader reads and validates a protocol header from r.
+func ReadHeader(r io.Reader) (Header, error) {
 	var header Header
 	headerBuf := make([]byte, HeaderSize)
-	_, err := io.ReadFull(conn, headerBuf)
+	_, err := io.ReadFull(r, headerBuf)
 	if err != nil {
 		return header, err
 	}
