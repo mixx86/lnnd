@@ -1,42 +1,30 @@
 # lnn
 
-lnn extends the Unix ln command with network capabilities, allowing you to create persistent links to files on remote machines as if they were local.
+**lnn** extends the Unix `ln` command with network capabilities — create persistent links to files on remote machines as if they were local.
 
-> ⚠️ **Work in progress** — core protocol in development.
+> Work in progress — core protocol implemented, link operations in development.
 
-## Features
+```bash
+lnn 192.168.1.34://var/log/app.log ./app.log   # symlink to a remote file
+lnn --add-peer 192.168.1.34                   # trust a peer
+lnn --peers                                   # list known peers
+```
 
-### Core
-- All original `ln` features
-- Remote file linking over custom encrypted protocol
-- Persistent links with automatic reconnection
-- Peer identification via UUID
-
-### Planned
-- Configurable encryption method
-- Sync mode (`--sync`)
-- Smart links (rule-based linking)
-- `--analyze` — show hard links, inode info
-- `--graph` — visualize link relationships
-- High performance, thousands of concurrent links
-
-## Architecture
+## How it works
 
 lnn consists of two components:
 
-- **`lnn`** — the CLI client, written in C. Drop-in replacement for ln with network extensions.
-- **`lnnd`** — the background daemon, written in Go. Manages peer connections, the custom protocol, and link persistence.
+- **`lnn`** — CLI client (C). Drop-in replacement for `ln` with network extensions.
+- **`lnnd`** — Background daemon (Go). Manages peer connections, the wire protocol, and link persistence.
 
-The CLI communicates with the local daemon via Unix socket (IPC). The daemon handles all network communication with remote peers.
+The CLI sends requests to the local daemon over a Unix socket. The daemon handles all TCP communication with remote peers, authenticating each one via Ed25519 mutual handshake before exchanging any data.
 
-## Installation
+See [docs/architecture.md](docs/architecture.md) for a full breakdown.
 
-### Build from source
+## Build
 
-**Requirements:**
-- GCC
-- Go 1.21+
-- Make
+**Requirements:** GCC, Go 1.21+, Make
+
 ```bash
 git clone https://github.com/d3xxdev/lnn.git
 cd lnn
@@ -46,59 +34,84 @@ make
 ## Usage
 
 ### Remote links
+
 ```bash
-lnn 192.168.1.34:/path/to/file.txt ./local_link   # symlink to specific remote file
-lnn -s 192.168.1.34:/path/to/file.txt ./local_link # explicit symlink
-lnn 192.168.1.34 ./local_link                      # request — remote chooses the file
+lnn 192.168.1.34://path/to/file.txt ./local_link    #  explicit hardlink to a remote file
+lnn -s 192.168.1.34://path/to/file.txt ./local_link # explicit symlink to a remote file
+lnn 192.168.1.34 ./local_link                      # open request — remote chooses the file
 ```
 
 ### Peer management
+
 ```bash
-lnn --add-peer 192.168.1.34    # add a trusted peer
-lnn --block 192.168.1.34       # block a peer
-lnn --peers                    # list known peers
-lnn --peers 192.168.1.34       # show info about a peer
+lnn --add-peer 192.168.1.34                      # add peer using default trusted template
+lnn --add-peer 192.168.1.34 --max                # add peer with max trust (any path)
+lnn --add-peer 192.168.1.34 --template mytempl   # add peer using a custom template
+lnn --peer 192.168.1.34 --allow /path/to/dir     # grant extra path to an existing peer
+lnn --peer 192.168.1.34 --anti-flooding 4hours;3requests  # set rate limit for a peer
+lnn --block 192.168.1.34                         # block a peer
+lnn --peers                                      # list known peers
+lnn --peers 192.168.1.34                         # show peer info, paths, and rate limit
 ```
 
-### Requests
 ```bash
-lnn --requests                          # list pending requests
-lnn --requests all                      # list all requests
-lnn --accept 192.168.1.34:id /path      # accept a request
+lnn --remove-peer 192.168.1.34                   # strip all paths (revert to unknown template)
+lnn --remove-peer 192.168.1.34 --template tmpl   # remove only the paths from that template
+lnn --remove-peer 192.168.1.34 /path/to/dir      # remove a single path
 ```
 
-### Daemon management
+Trusted peers can create links directly (no request needed) inside the paths their template grants them. The template is a snapshot — modifying the template later does not change already-added peers. See [docs/architecture.md](docs/architecture.md) for the full permission model.
+
+### Alerts
+
 ```bash
-lnnd start     # start the daemon
-lnnd stop      # stop the daemon
-lnnd status    # show daemon status
+lnn --alert        # show unread alerts
+lnn --alert all    # show full alert history
 ```
 
-### Local (original ln features)
+Alerts are generated when a peer exceeds their request rate limit or attempts a link to an unauthorized path.
+
+### Incoming requests
+
 ```bash
-lnn file.txt link.txt          # hard link
-lnn -s file.txt link.txt       # symbolic link
+lnn --requests                       # list pending requests
+lnn --requests all                   # list all requests
+lnn --accept 192.168.1.34:id /path   # accept and resolve a request
 ```
 
-### Remote hard links (planned)
+### Daemon
+
 ```bash
-lnn 192.168.1.34:/path/to/file.txt ./local_link  # hard link to remote file
+lnnd start    # start the daemon
+lnnd stop     # stop the daemon
+lnnd status   # show status
 ```
 
-## Roadmap
+### Local (`ln` compatible)
 
-- [X] Core protocol (HELLO, peer identification)
-- [ ] TLS encryption
-- [X] Basic daemon (peer management, connections)
-- [ ] Remote symlinks
-- [ ] Original `ln` features (CLI)
-- [X] IPC (CLI ↔ daemon communication)
-- [ ] `--add-peer` / `--block` / `--requests`
-- [ ] Sync mode (`--sync`)
-- [ ] Remote hard links
-- [ ] Smart links (rule-based)
-- [ ] `--analyze` / `--graph`
-- [ ] Configurable encryption
+```bash
+lnn file.txt link.txt       # hard link
+lnn -s file.txt link.txt    # symbolic link
+```
+
+## Status
+
+| Feature                        | Status      |
+|-------------------------------|-------------|
+| Wire protocol + message types  | Done        |
+| Ed25519 mutual handshake       | Done        |
+| Peer state machine             | Done        |
+| TCP message dispatch loop      | Done        |
+| IPC (CLI ↔ daemon)             | Done        |
+| Remote symlinks                | In progress |
+| Remote hard links              | In progress |
+| Peer management (`--add-peer`) | Planned     |
+| Persistent link database       | Planned     |
+| TLS encryption                 | Planned     |
+| Sync mode (`--sync`)           | Planned     |
+| Smart links                    | Planned     |
+
+Full roadmap: [docs/roadmap.md](docs/roadmap.md)
 
 ## License
 
