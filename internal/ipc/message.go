@@ -2,7 +2,6 @@ package ipc
 
 import (
 	"encoding/json"
-	"log"
 )
 
 // Request represents an IPC request message.
@@ -24,9 +23,5 @@ type Response struct {
 func ParseRequest(data []byte) (Request, error) {
 	var req Request
 	err := json.Unmarshal(data, &req)
-	if err != nil {
-		log.Fatalf("Error deserializing json data from the request: %v", err)
-		return req, err
-	}
 	return req, err
 }
