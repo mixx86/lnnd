@@ -11,12 +11,24 @@ import (
 	"time"
 )
 
-// HandleConnTCP manages an incoming TCP connection, performing handshake with timeout.
+// HandleConnTCP manages a single incoming TCP connection from handshake to close.
+// Enforces a 5-second deadline on the handshake phase to prevent a slow or malicious
+// client from holding the goroutine open indefinitely before authenticating.
 func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
+		}
+	}()
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		tcpConn.SetKeepAlive(true)
-		tcpConn.SetKeepAlivePeriod(30 * time.Second)
+		// Keepalive lets the OS detect dead connections without application-level heartbeats.
+		// Failure is non-fatal: the connection still works, we just lose dead-peer detection.
+		if err := tcpConn.SetKeepAlive(true); err != nil {
+			logger.Daemon.Printf("Couldn't activate KeepAlive in %s: %v", conn.RemoteAddr(), err)
+		}
+		if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+			logger.Daemon.Printf("Couldn't set KeepAlive period in %s: %v", conn.RemoteAddr(), err)
+		}
 	} else {
 		logger.Daemon.Printf("Couldn't activate KeepAlive in %s", conn.RemoteAddr())
 	}

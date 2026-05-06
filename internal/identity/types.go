@@ -1,4 +1,3 @@
-// Package identity types
 package identity
 
 import (
@@ -9,12 +8,12 @@ import (
 
 // Credentials holds the node's identity credentials.
 type Credentials struct {
-	ID      uuid.UUID
-	PrivKey ed25519.PrivateKey
-	PubKey  ed25519.PublicKey
+	ID      uuid.UUID          // Stable node identifier, persisted across restarts.
+	PrivKey ed25519.PrivateKey // Used to sign challenge nonces during handshake.
+	PubKey  ed25519.PublicKey  // Shared with peers during HELLO so they can verify our signatures.
 }
 
 // IdentityService manages node identity and credentials.
 type IdentityService struct {
-	creds Credentials
+	creds Credentials // Unexported to prevent external mutation after initialization.
 }
