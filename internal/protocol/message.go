@@ -56,7 +56,9 @@ var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
 const protocolVersion uint8 = 0x01
 
-// ReadHeader reads and validates a protocol header from r.
+// ReadHeader reads and validates a fixed-size protocol header from r.
+// Returns an error if the magic bytes do not match (non-LNN traffic) or
+// if the version is unsupported, so callers can reject bad connections early.
 func ReadHeader(r io.Reader) (Header, error) {
 	var header Header
 	headerBuf := make([]byte, HeaderSize)
@@ -66,18 +68,17 @@ func ReadHeader(r io.Reader) (Header, error) {
 	}
 
 	copy(header.Magic[:], headerBuf[0:4])
-
 	header.Version = headerBuf[4]
-
 	header.Type = headerBuf[5]
-
 	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[6:10])
 
+	// Reject non-LNN traffic before consuming any more of the stream.
 	var expectedMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 	if header.Magic != expectedMagic {
 		return header, errors.New("invalid magic")
 	}
 
+	// Reject connections from incompatible protocol versions before parsing the body.
 	if header.Version != 0x01 {
 		return header, errors.New("unsupported version")
 	}

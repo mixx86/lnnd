@@ -8,22 +8,25 @@ import (
 	"github.com/google/uuid"
 )
 
+// State represents the lifecycle stage of a peer connection.
 type State int
 
 const (
-	StateNew       State = iota // Recently opened connection
-	StateHandshake              // Waiting for Hello/Challenge
-	StateVerified               // Authenticated, ready for commands
-	StateClosing                // Closing resources
+	StateNew       State = iota // TCP connection accepted, handshake not yet started.
+	StateHandshake              // Handshake in progress; only handshake messages are valid.
+	StateVerified               // Mutual authentication complete; peer is trusted for application messages.
+	StateClosing                // Graceful shutdown initiated; no new messages should be sent.
 )
 
-// Peer represents an authenticated connection to a remote peer.
+// Peer represents an authenticated remote peer and its associated connection.
 type Peer struct {
 	ID     uuid.UUID
 	PubKey ed25519.PublicKey
 	Conn   net.Conn
 	State  State
-	Mu     sync.Mutex
+	// Mu guards writes to Conn. Exported so network.SendTCP can lock it directly;
+	// both the TCP read goroutine and the IPC handler goroutine may write concurrently.
+	Mu sync.Mutex
 }
 
 // PeerManager maintains a thread-safe registry of active peer connections.

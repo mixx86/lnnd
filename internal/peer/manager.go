@@ -12,7 +12,9 @@ func NewPeerManager() *PeerManager {
 	}
 }
 
-// Register adds a peer connection to the manager.
+// Register adds or replaces a peer in the registry.
+// If a peer with the same ID already exists it is silently overwritten,
+// which is the correct behavior when a peer reconnects.
 func (pm *PeerManager) Register(p *Peer) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()

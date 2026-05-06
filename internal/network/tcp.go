@@ -18,25 +18,26 @@ func ConnectTCP(ip string) (net.Conn, error) {
 	return net.Dial("tcp", ip+":"+port)
 }
 
-// ListenTCP starts the TCP server and handles incoming connections.
-// Uses TCP_PORT environment variable for the port.
-// This function blocks indefinitely.
-func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) {
+// ListenTCP binds to TCP_PORT and accepts incoming peer connections indefinitely.
+// Returns only if the bind fails; a successful call never returns.
+func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) error {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Fatalf("Error opening the connection: %v", err)
+		return err
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatalf("Error accepting the connection: %v", err)
+			log.Printf("Error accepting TCP connection: %v", err)
+			continue
 		}
 		go HandleConnTCP(conn, i, pm)
 	}
 }
 
-// SendTCP encodes and sends a protocol message over the connection.
+// SendTCP encodes and sends a protocol message to a peer.
+// Safe to call concurrently from multiple goroutines.
 func SendTCP(p *peer.Peer, data protocol.Message) error {
 	packet, err := data.Encode()
 	if err != nil {
@@ -63,8 +64,8 @@ func sendRaw(conn net.Conn, data protocol.Message) error {
 	return err
 }
 
-// ReceiveTCP reads and parses a protocol message from the connection.
-// Returns the appropriate message type based on the header.
+// ReceiveTCP reads a complete protocol message from conn and returns it as the
+// appropriate concrete type. Blocks until a full message arrives or an error occurs.
 func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 	header, err := protocol.ReadHeader(conn)
 	if err != nil {
