@@ -37,11 +37,27 @@ func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) {
 }
 
 // SendTCP encodes and sends a protocol message over the connection.
-func SendTCP(conn net.Conn, data protocol.Message) error {
+func SendTCP(p *peer.Peer, data protocol.Message) error {
 	packet, err := data.Encode()
 	if err != nil {
 		return fmt.Errorf("encode message: %w", err)
 	}
+
+	// Since either IPC or TCP server can send packets, we need to lock with mutex before the write operation to avoid collisions.
+	p.Mu.Lock()
+	defer p.Mu.Unlock()
+	_, err = p.Conn.Write(packet)
+	return err
+}
+
+// In order to send packets when the peer is not initialized, we need to write without locking.
+// This is actually not an issue since no other service than handshake is allowed to send messages while the auth process is happening.
+func sendRaw(conn net.Conn, data protocol.Message) error {
+	packet, err := data.Encode()
+	if err != nil {
+		return fmt.Errorf("encode message: %w", err)
+	}
+
 	_, err = conn.Write(packet)
 
 	return err
