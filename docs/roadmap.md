@@ -79,10 +79,11 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 ## Phase 4 — Request workflow
 *Async link requests between peers.*
 
-- [ ] `lnn <ip> ./link` — open request (remote chooses file)
+- [ ] `lnn <ip>://path/to/file [./local_link]` — send a link request; dst is optional, receiver decides if omitted
 - [ ] `lnn --requests` — list pending incoming requests
 - [ ] `lnn --requests all` — list all requests (pending + history)
-- [ ] `lnn --accept <ip>:<id> /path` — accept a request and resolve the link
+- [ ] `lnn --accept <ip>:<id> [/path]` — accept a request; /path required only if sender did not specify dst — if sender did specify dst, it cannot be changed
+- [ ] `lnn --reject <ip>:<id>` — reject a request
 
 ---
 

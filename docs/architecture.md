@@ -87,8 +87,8 @@ Every message starts with a fixed 10-byte header:
 | `3`  | ERROR             | 43 B         | Error code (int64) + message (35 B)  |
 | `4`  | LINK_SYM          | 512 B        | Direct symlink: source + target |
 | `5`  | LINK_HARD         | 512 B        | Direct hard link: source + target |
-| `6`  | LINK_SYM_REQUEST  | 512 B        | Request peer to create a symlink     |
-| `7`  | LINK_HARD_REQUEST | 512 B        | Request peer to create a hard link   |
+| `6`  | LINK_SYM_REQUEST  | variable (max 8194 B) | Request peer to create a symlink. Includes src and an optional dst on the receiver's machine. |
+| `7`  | LINK_HARD_REQUEST | variable (max 8194 B) | Request peer to create a hard link. Includes src and an optional dst on the receiver's machine. |
 | `8`  | OK                | 0 B          | Success acknowledgment               |
 
 Path fields (source/target) are fixed at 256 bytes, null-terminated.
@@ -142,12 +142,14 @@ Every authenticated peer has a permission set that controls what it can do on th
 ```
 No path permissions              Local daemon
       │                               │
-      │──── LINK_SYM_REQUEST ────────►│  queued, user must --accept
+      │──── LINK_SYM_REQUEST ────────►│  queued, user must --accept or --reject
+      │     (src + optional dst)      │  if sender included dst, receiver cannot change it
+      │                               │  if sender omitted dst, receiver specifies it on --accept
       │◄─── OK (after accept) ────────│
 
 With path permissions            Local daemon
       │                               │
-      │──── LINK_SYM ───────────────►│  executed immediately if path is allowed
+      │──── LINK_SYM ───────────────►│  executed immediately if dst is in allowed paths
       │◄─── OK / ERROR ───────────────│
 ```
 
@@ -258,7 +260,7 @@ This lets you maintain different permission profiles without touching the built-
 | `/foo/*`     | All paths under `/foo/`              |
 | `/*`         | All paths on the filesystem          |
 
-Incoming `LINK_SYM` / `LINK_HARD` target paths are checked against the peer's allowed paths. A mismatch is rejected with `ERROR(ErrInvalidState)`.
+Incoming `LINK_SYM` / `LINK_HARD` dst paths are checked against the peer's allowed paths before execution. A mismatch is rejected with `ERROR`. `LINK_SYM_REQUEST` / `LINK_HARD_REQUEST` bypass this check and go to the queue — the user decides on `--accept`.
 
 ### Alert system
 
