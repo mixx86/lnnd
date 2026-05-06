@@ -11,23 +11,41 @@ import (
 	"time"
 )
 
-// HandleConnTCP manages an incoming TCP connection, performing handshake with timeout.
+// HandleConnTCP manages a single incoming TCP connection from handshake to close.
+// Enforces a 5-second deadline on the handshake phase to prevent a slow or malicious
+// client from holding the goroutine open indefinitely before authenticating.
 func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
+		}
+	}()
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		tcpConn.SetKeepAlive(true)
-		tcpConn.SetKeepAlivePeriod(30 * time.Second)
+		// Keepalive lets the OS detect dead connections without application-level heartbeats.
+		// Failure is non-fatal: the connection still works, we just lose dead-peer detection.
+		if err := tcpConn.SetKeepAlive(true); err != nil {
+			logger.Daemon.Printf("Couldn't activate KeepAlive in %s: %v", conn.RemoteAddr(), err)
+		}
+		if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+			logger.Daemon.Printf("Couldn't set KeepAlive period in %s: %v", conn.RemoteAddr(), err)
+		}
 	} else {
 		logger.Daemon.Printf("Couldn't activate KeepAlive in %s", conn.RemoteAddr())
 	}
 
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if conn.SetDeadline(time.Now().Add(5*time.Second)) != nil {
+		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
+		return
+	}
 	p, err := InBoundHandshake(conn, i, pm)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
 	}
-	conn.SetDeadline(time.Time{})
+	if err = conn.SetDeadline(time.Time{}); err != nil {
+		logger.Daemon.Printf("Error clearing deadline in %s", conn.RemoteAddr())
+		return
+	}
 
 	for {
 		msg, err := ReceiveTCP(conn)
@@ -35,7 +53,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 			logger.Daemon.Printf("Error receving TCP packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, &p)
+		err = HandleTCPMessage(conn, msg, p)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
 			return
@@ -50,7 +68,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer) error {
 	switch m := msg.(type) {
 	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
-		SendTCP(conn, protocol.ErrorMessage{
+		SendTCP(p, protocol.ErrorMessage{
 			Code:    protocol.ErrInvalidState,
 			Message: protocol.MsgErrInvalidState,
 		})
@@ -60,7 +78,7 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer) error {
 		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
 
 	default:
-		SendTCP(conn, protocol.ErrorMessage{
+		SendTCP(p, protocol.ErrorMessage{
 			Code:    protocol.ErrInvalidMessage,
 			Message: protocol.MsgErrInvalidMessage,
 		})

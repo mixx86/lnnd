@@ -7,10 +7,14 @@ import (
 )
 
 func main() {
-	config.LoadEnv("configs/lnnd.conf")
+	if err := config.LoadEnv("configs/lnnd.conf"); err != nil {
+		log.Fatalf("Couldn't load config: %v", err)
+	}
 	d, err := daemon.New()
 	if err != nil {
 		log.Fatalf("Couldn't create the daemon: %v", err)
 	}
-	d.Start()
+	if err := d.Start(); err != nil {
+		log.Fatalf("Daemon failed: %v", err)
+	}
 }

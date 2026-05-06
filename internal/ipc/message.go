@@ -10,7 +10,7 @@ type Request struct {
 	Type string `json:"type"` // Link type (e.g., "sym", "hard")
 	Src  string `json:"src"`  // Source path in IP://path format
 	Dst  string `json:"dst"`  // Destination path
-	IP   string `json:"-"`    // Parsed IP address (not serialized)
+	IP   string `json:"-"`    // Extracted from Src by Validate; omitted from JSON since it is derived, not provided separately.
 }
 
 // Response represents an IPC response message.

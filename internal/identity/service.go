@@ -46,8 +46,8 @@ func LoadLocalCreds() (Credentials, error) {
 	return Credentials{ID: id, PrivKey: priv, PubKey: pub}, nil
 }
 
-// InitUUID loads or generates a UUID for this node.
-// The UUID is stored in ~/.lnn/uuid.
+// InitUUID loads or generates a persistent UUID for this node.
+// The UUID is stored in ~/.lnn/uuid and survives restarts.
 func InitUUID() (uuid.UUID, error) {
 	var id uuid.UUID
 	home, err := os.UserHomeDir()
@@ -56,6 +56,7 @@ func InitUUID() (uuid.UUID, error) {
 	}
 	dir := filepath.Join(home, ".lnn")
 	path := filepath.Join(dir, "uuid")
+	// 0700: the directory holds private key material and must not be readable by other users.
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return id, fmt.Errorf("failed to create dir: %w", err)
 	}
@@ -79,8 +80,9 @@ func InitUUID() (uuid.UUID, error) {
 	return id, fmt.Errorf("unexpected error: %w", err)
 }
 
-// InitKeys loads or generates an Ed25519 keypair for this node.
-// Keys are stored in ~/.lnn/id_ed25519 and ~/.lnn/id_ed25519.pub.
+// InitKeys loads or generates a persistent Ed25519 keypair for this node.
+// The private key is stored at ~/.lnn/id_ed25519 (mode 0600, owner-only).
+// The public key is stored at ~/.lnn/id_ed25519.pub (mode 0644, base64-encoded).
 func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".lnn")
@@ -97,10 +99,13 @@ func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		// 0600: private key must never be readable by other users.
 		if err := os.WriteFile(privPath, priv, 0600); err != nil {
 			return nil, nil, fmt.Errorf("failed to save private key: %w", err)
 		}
+		// Base64 so the public key file is human-readable and easy to share or inspect.
 		pubBase64 := base64.StdEncoding.EncodeToString(pub)
+		// 0644: public key can be world-readable by design.
 		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0644); err != nil {
 			return nil, nil, fmt.Errorf("failed to save public key: %w", err)
 		}
