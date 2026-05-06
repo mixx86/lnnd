@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	ErrorMessagePayloadSize = 43
-	ErrorMessageSize        = 35
-	CodeErrorMessageSize    = 8
+	ErrorMessagePayloadSize = 43 // Total payload: 8-byte code + 35-byte message.
+	ErrorMessageSize        = 35 // Fixed-size message field; zero-padded on the wire.
+	CodeErrorMessageSize    = 8  // int64 error code, big-endian.
 )
 
 // ErrorMessage signals a protocol error to the remote peer.
@@ -22,13 +22,11 @@ type ErrorMessage struct {
 func EncodeErrorMessage(code int64, message string) []byte {
 	packet := make([]byte, HeaderSize+ErrorMessagePayloadSize)
 
-	// Header
 	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	packet[OffsetVersion] = protocolVersion
 	packet[OffsetType] = MsgError
 	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ErrorMessagePayloadSize)
 
-	// Payload
 	binary.BigEndian.PutUint64(packet[OffsetBody:], uint64(code))
 	copy(packet[OffsetBody+CodeErrorMessageSize:], message)
 
@@ -48,6 +46,8 @@ func ParseError(payload []byte) (ErrorMessage, error) {
 	code := int64(binary.BigEndian.Uint64(payload[:CodeErrorMessageSize]))
 	raw := payload[CodeErrorMessageSize:]
 	n := 0
+	// The message field is zero-padded to a fixed size on the wire; scan to the first
+	// null byte to recover the original string without trailing garbage.
 	for n < ErrorMessageSize && raw[n] != 0 {
 		n++
 	}

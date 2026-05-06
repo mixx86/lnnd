@@ -40,13 +40,11 @@ func ParseChallenge(payload []byte) (ChallengeMessage, error) {
 func EncodeChallenge(nonce [NonceSize]byte) []byte {
 	packet := make([]byte, HeaderSize+ChallengePayloadSize)
 
-	// Header
 	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	packet[OffsetVersion] = protocolVersion
 	packet[OffsetType] = MsgChallenge
 	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ChallengePayloadSize)
 
-	// Payload
 	copy(packet[OffsetBody:], nonce[:])
 
 	return packet
@@ -69,13 +67,11 @@ func (m ChallengeRespMessage) Encode() ([]byte, error) {
 func EncodeChallengeResp(sig [ChallengeRespPayloadSize]byte) []byte {
 	packet := make([]byte, HeaderSize+ChallengeRespPayloadSize)
 
-	// Header
 	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	packet[OffsetVersion] = protocolVersion
 	packet[OffsetType] = MsgChallengeResp
 	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ChallengeRespPayloadSize)
 
-	// Payload
 	copy(packet[OffsetBody:], sig[:])
 
 	return packet
