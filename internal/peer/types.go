@@ -23,6 +23,7 @@ type Peer struct {
 	PubKey ed25519.PublicKey
 	Conn   net.Conn
 	State  State
+	Mu     sync.Mutex
 }
 
 // PeerManager maintains a thread-safe registry of active peer connections.

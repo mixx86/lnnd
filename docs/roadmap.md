@@ -22,6 +22,7 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 ## Phase 2 — Remote links
 *Core feature: creating links across machines.*
 
+- [x] Concurrent write protection on `Peer` — `sendMu sync.Mutex` + `sendRaw` for handshake (which doesn't have a peer yet), `SendTCP(*Peer)` post-handshake
 - [ ] Link message handling in the daemon (`LINK_SYM_REQUEST`, `LINK_HARD_REQUEST`)
 - [ ] IPC → network bridge (forward CLI requests to the correct peer)
 - [ ] `lnn <ip>://path ./link` — remote symlink via CLI
