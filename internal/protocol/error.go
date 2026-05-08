@@ -34,8 +34,8 @@ func EncodeErrorMessage(code int64, message string) []byte {
 }
 
 // Encode serializes the error message into wire format.
-func (m ErrorMessage) Encode() ([]byte, error) {
-	return EncodeErrorMessage(m.Code, m.Message), nil
+func (m ErrorMessage) Encode() []byte {
+	return EncodeErrorMessage(m.Code, m.Message)
 }
 
 // ParseError deserializes an error message from raw bytes.

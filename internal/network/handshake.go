@@ -59,6 +59,8 @@ func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerM
 		return fmt.Errorf("error verifying the key")
 	}
 
+	// We verify the peer's signature before sending our own — this ensures we never
+	// sign anything for a peer we haven't authenticated yet.
 	signature := protocol.ResolveNonce(creds.PrivKey, challengeMsg.Nonce)
 	err = sendRaw(conn, protocol.ChallengeRespMessage{
 		Signature: signature,

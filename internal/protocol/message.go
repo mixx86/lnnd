@@ -21,7 +21,7 @@ const (
 
 // Message is the interface for all protocol messages.
 type Message interface {
-	Encode() ([]byte, error)
+	Encode() []byte
 }
 
 // Header represents the fixed-size protocol header.

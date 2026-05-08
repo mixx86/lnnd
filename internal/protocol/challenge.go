@@ -21,8 +21,8 @@ type ChallengeMessage struct {
 }
 
 // Encode serializes the challenge message into wire format.
-func (m ChallengeMessage) Encode() ([]byte, error) {
-	return EncodeChallenge(m.Nonce), nil
+func (m ChallengeMessage) Encode() []byte {
+	return EncodeChallenge(m.Nonce)
 }
 
 // ParseChallenge deserializes a challenge message from raw bytes.
@@ -59,8 +59,8 @@ type ChallengeRespMessage struct {
 }
 
 // Encode serializes the challenge response message into wire format.
-func (m ChallengeRespMessage) Encode() ([]byte, error) {
-	return EncodeChallengeResp(m.Signature), nil
+func (m ChallengeRespMessage) Encode() []byte {
+	return EncodeChallengeResp(m.Signature)
 }
 
 // EncodeChallengeResp constructs a complete challenge response message packet.

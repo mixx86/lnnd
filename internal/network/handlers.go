@@ -67,15 +67,17 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 // and does not handle handshake or pre-verification messages.
 func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer) error {
 	switch m := msg.(type) {
+	case protocol.SymLinkRequest:
+		return nil
+	case protocol.ErrorMessage:
+		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
+
 	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
 		SendTCP(p, protocol.ErrorMessage{
 			Code:    protocol.ErrInvalidState,
 			Message: protocol.MsgErrInvalidState,
 		})
 		return fmt.Errorf("handshake message received in state %v from peer %v", p.State, p.ID)
-
-	case protocol.ErrorMessage:
-		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
 
 	default:
 		SendTCP(p, protocol.ErrorMessage{

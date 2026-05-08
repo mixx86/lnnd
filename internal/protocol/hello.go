@@ -36,8 +36,8 @@ func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
 }
 
 // Encode serializes the hello message into wire format.
-func (m HelloMessage) Encode() ([]byte, error) {
-	return EncodeHello(m.ID, m.PublicKey), nil
+func (m HelloMessage) Encode() []byte {
+	return EncodeHello(m.ID, m.PublicKey)
 }
 
 // ParseHello deserializes a hello message from raw bytes.
