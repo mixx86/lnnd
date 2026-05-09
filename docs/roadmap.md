@@ -125,7 +125,7 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 - [ ] Smart links — rule-based linking (e.g., link all `.log` files matching a pattern)
 - [ ] `--analyze` — show inode info, hard link count, link targets
 - [ ] `--graph` — visualize link relationships between peers
-- [ ] High-throughput mode — thousands of concurrent links
+- [ ] High-throughput mode — thousands of concurrent links; io_uring for transfers >64 KB (submission/completion queues, zero syscall overhead in the hot path)
 - [ ] Configurable encryption method per peer
 
 ---
