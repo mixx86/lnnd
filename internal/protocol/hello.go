@@ -3,7 +3,6 @@ package protocol
 import (
 	"crypto/ed25519"
 	"encoding/binary"
-	"errors"
 
 	"github.com/google/uuid"
 )
@@ -30,7 +29,6 @@ func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
 	copy(packet[cursor:cursor+UUIDSize], id[:])
 	cursor += UUIDSize
 	copy(packet[cursor:cursor+PublicKeySize], pubKey)
-	// cursor += PublicKeySize <- can be ommited (last field)
 
 	return packet
 }
@@ -42,9 +40,6 @@ func (m HelloMessage) Encode() []byte {
 
 // ParseHello deserializes a hello message from raw bytes.
 func ParseHello(payload []byte) (HelloMessage, error) {
-	if len(payload) != int(HelloPayloadSize) {
-		return HelloMessage{}, errors.New("invalid payload size")
-	}
 	var parsedPayload HelloMessage
 	cursor := 0
 
@@ -56,7 +51,6 @@ func ParseHello(payload []byte) (HelloMessage, error) {
 
 	pubKey := make(ed25519.PublicKey, PublicKeySize)
 	copy(pubKey, payload[cursor:cursor+PublicKeySize])
-	// cursor += PublicKeySize <- can be ommited (last field)
 
 	parsedPayload.ID = parsedID
 	parsedPayload.PublicKey = pubKey

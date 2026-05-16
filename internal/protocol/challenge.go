@@ -3,7 +3,6 @@ package protocol
 
 import (
 	"encoding/binary"
-	"errors"
 )
 
 const (
@@ -17,7 +16,7 @@ const ChallengePayloadSize uint32 = 32
 
 // ChallengeMessage contains a cryptographic nonce for peer authentication.
 type ChallengeMessage struct {
-	Nonce [32]byte
+	Nonce [ChallengePayloadSize]byte
 }
 
 // Encode serializes the challenge message into wire format.
@@ -27,9 +26,6 @@ func (m ChallengeMessage) Encode() []byte {
 
 // ParseChallenge deserializes a challenge message from raw bytes.
 func ParseChallenge(payload []byte) (ChallengeMessage, error) {
-	if len(payload) != int(ChallengePayloadSize) {
-		return ChallengeMessage{}, errors.New("invalid payload size")
-	}
 	var parsedPayload ChallengeMessage
 	copy(parsedPayload.Nonce[:], payload)
 
@@ -79,9 +75,6 @@ func EncodeChallengeResp(sig [ChallengeRespPayloadSize]byte) []byte {
 
 // ParseChallengeResp deserializes a challenge response message from raw bytes.
 func ParseChallengeResp(payload []byte) (ChallengeRespMessage, error) {
-	if len(payload) != int(ChallengeRespPayloadSize) {
-		return ChallengeRespMessage{}, errors.New("invalid payload size")
-	}
 	var parsedPayload ChallengeRespMessage
 	copy(parsedPayload.Signature[:], payload)
 

@@ -87,8 +87,8 @@ Every message starts with a fixed 10-byte header:
 | `3`  | ERROR             | 43 B         | Error code (int64) + message (35 B)  |
 | `4`  | LINK_SYM          | 512 B        | Direct symlink: source + target |
 | `5`  | LINK_HARD         | 512 B        | Direct hard link: source + target |
-| `6`  | LINK_SYM_REQUEST  | variable (max 8194 B) | Request peer to create a symlink. Includes src and an optional dst on the receiver's machine. |
-| `7`  | LINK_HARD_REQUEST | variable (max 8194 B) | Request peer to create a hard link. Includes src and an optional dst on the receiver's machine. |
+| `6`  | LINK_SYM_REQUEST  | variable (max 8196 B) | Request peer to create a symlink. Includes src and an optional dst on the receiver's machine. |
+| `7`  | LINK_HARD_REQUEST | variable (max 8196 B) | Request peer to create a hard link. Includes src and an optional dst on the receiver's machine. |
 | `8`  | OK                | 0 B          | Success acknowledgment               |
 
 Path fields (source/target) are fixed at 256 bytes, null-terminated.

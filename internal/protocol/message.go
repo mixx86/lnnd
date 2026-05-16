@@ -14,8 +14,8 @@ const (
 	MsgError           uint8 = 3 // Error notification
 	MsgLinkSym         uint8 = 4 // Symbolic link operation
 	MsgLinkHard        uint8 = 5 // Hard link operation
-	MsgLinkSymRequest  uint8 = 6 // Request to create symbolic link
-	MsgLinkHardRequest uint8 = 7 // Request to create hard link
+	MsgSymLinkRequest  uint8 = 6 // Request to create symbolic link
+	MsgHardLinkRequest uint8 = 7 // Request to create hard link
 	MsgOk              uint8 = 8 // Success acknowledgment
 )
 

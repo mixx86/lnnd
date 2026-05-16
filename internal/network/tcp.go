@@ -1,12 +1,13 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"lnn/internal/identity"
+	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
-	"log"
 	"net"
 	"os"
 )
@@ -29,7 +30,7 @@ func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("Error accepting TCP connection: %v", err)
+			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
 			continue
 		}
 		go HandleConnTCP(conn, i, pm)
@@ -97,8 +98,20 @@ func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 
 		return protocol.ParseChallengeResp(payload)
 
+	case protocol.MsgSymLinkRequest:
+		if header.PayloadLength > 8192 || header.PayloadLength < 3 {
+			return protocol.SymLinkRequest{}, errors.New("invalid payload size")
+		}
+		payload := make([]byte, header.PayloadLength)
+		_, err := io.ReadFull(conn, payload)
+
+		if err != nil {
+			return protocol.SymLinkRequest{}, err
+		}
+		
+		return protocol.ParseSymLinkRequest(payload)
+
 	default:
 		return nil, fmt.Errorf("unknown message type: %d", header.Type)
 	}
-
 }
