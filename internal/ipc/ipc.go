@@ -7,8 +7,7 @@ import (
 	"os"
 )
 
-// HandleConnUNIX reads a single request from conn, dispatches it, and closes the connection.
-// Each CLI invocation opens a new connection, so the lifetime is one request per connection.
+// One request per connection — each CLI invocation opens a fresh socket.
 func HandleConnUNIX(conn net.Conn) {
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -28,9 +27,7 @@ func HandleConnUNIX(conn net.Conn) {
 	HandleRequest(&req)
 }
 
-// ListenIPC starts the Unix socket listener for IPC communication.
-// Reads the socket path from LNND_IPC_SOCKET environment variable.
-// This function blocks indefinitely.
+// ListenIPC starts the Unix socket listener. Reads the path from LNND_IPC_SOCKET. Blocks indefinitely.
 func ListenIPC() error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	// Remove any stale socket file left by a previous unclean shutdown; net.Listen would

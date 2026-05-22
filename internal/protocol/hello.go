@@ -12,8 +12,8 @@ const HelloPayloadSize uint32 = 48
 
 // HelloMessage contains peer identification information.
 type HelloMessage struct {
-	ID        uuid.UUID         // Peer's unique identifier
-	PublicKey ed25519.PublicKey // Peer's public key
+	ID        uuid.UUID
+	PublicKey ed25519.PublicKey
 }
 
 // EncodeHello constructs a complete hello message packet.

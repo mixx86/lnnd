@@ -1,28 +1,26 @@
-// Package network handles TCP connections and protocol handshakes.
 package network
 
 import (
 	"fmt"
+	"net"
+	"time"
+
 	"lnn/internal/identity"
+	"lnn/internal/iocore"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
-	"net"
-	"time"
 )
 
-// HandleConnTCP manages a single incoming TCP connection from handshake to close.
-// Enforces a 5-second deadline on the handshake phase to prevent a slow or malicious
-// client from holding the goroutine open indefinitely before authenticating.
-func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) {
+// 5-second handshake deadline: prevents a slow or malicious peer from holding the goroutine forever.
+func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager, ioc *iocore.Manager) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
 		}
 	}()
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		// Keepalive lets the OS detect dead connections without application-level heartbeats.
-		// Failure is non-fatal: the connection still works, we just lose dead-peer detection.
+		// Failure is non-fatal: we just lose OS-level dead-peer detection.
 		if err := tcpConn.SetKeepAlive(true); err != nil {
 			logger.Daemon.Printf("Couldn't activate KeepAlive in %s: %v", conn.RemoteAddr(), err)
 		}
@@ -53,7 +51,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 			logger.Daemon.Printf("Error receving TCP packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, p)
+		err = HandleTCPMessage(conn, msg, p, ioc)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
 			return
@@ -61,14 +59,38 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 	}
 }
 
-// HandleTCPMessage processes application-layer messages for peers that have
-// successfully completed the handshake (StateVerified).
-// It assumes the peer state has already been validated by the routing layer
-// and does not handle handshake or pre-verification messages.
-func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer) error {
+// HandleTCPMessage processes application-layer messages for peers in StateVerified.
+func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer, ioc *iocore.Manager) error {
 	switch m := msg.(type) {
 	case protocol.ErrorMessage:
 		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
+
+	case protocol.SymLinkRequest:
+		pr, ok := ioc.TryEnqueue(p, m)
+		if !ok {
+			if ioc.Pressure() == 0 {
+				// WAL is the bottleneck — genuine overload, fail immediately.
+				SendTCP(p, protocol.ErrorMessage{
+					Code:    protocol.ErrOverloaded,
+					Message: protocol.MsgErrOverloaded,
+				})
+				return fmt.Errorf("WAL overloaded, rejected request from peer %v", p.ID)
+			}
+
+			pr, ok = ioc.Enqueue(p, m, 5*time.Second)
+			if !ok {
+				SendTCP(p, protocol.ErrorMessage{
+					Code:    protocol.ErrOverloaded,
+					Message: protocol.MsgErrOverloaded,
+				})
+				return fmt.Errorf("backpressure timeout, rejected request from peer %v", p.ID)
+			}
+		}
+		go func() {
+			<-pr.Written
+			// sendTCP ok
+		}()
+		return nil
 
 	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
 		SendTCP(p, protocol.ErrorMessage{

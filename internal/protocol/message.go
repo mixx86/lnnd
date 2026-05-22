@@ -24,12 +24,25 @@ type Message interface {
 	Encode() []byte
 }
 
-// Header represents the fixed-size protocol header.
-// Layout:
-// [0-3] Magic
-// [4]   Version
-// [5]   Type
-// [6-9] PayloadLength
+// InboundRequest marks inbound messages handled as requests.
+type InboundRequest interface {
+	Message
+	RequestType() uint8
+}
+
+// OkMessage is a zero-payload acknowledgment sent after a message
+// has been successfully handled.
+type OkMessage struct{}
+
+func (OkMessage) Encode() []byte {
+	packet := make([]byte, HeaderSize)
+	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
+	packet[OffsetVersion] = protocolVersion
+	packet[OffsetType] = MsgOk
+	return packet
+}
+
+// Header represents the fixed-size protocol header. See architecture.md for the full layout.
 type Header struct {
 	Magic         [4]byte
 	Version       uint8
@@ -37,7 +50,6 @@ type Header struct {
 	PayloadLength uint32
 }
 
-// Header field sizes and offsets.
 const (
 	MagicSize   = 4
 	VersionSize = 1
@@ -56,9 +68,7 @@ var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
 const protocolVersion uint8 = 0x01
 
-// ReadHeader reads and validates a fixed-size protocol header from r.
-// Returns an error if the magic bytes do not match (non-LNN traffic) or
-// if the version is unsupported, so callers can reject bad connections early.
+// ReadHeader reads and validates the protocol header from r.
 func ReadHeader(r io.Reader) (Header, error) {
 	var header Header
 	headerBuf := make([]byte, HeaderSize)
@@ -72,13 +82,11 @@ func ReadHeader(r io.Reader) (Header, error) {
 	header.Type = headerBuf[5]
 	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[6:10])
 
-	// Reject non-LNN traffic before consuming any more of the stream.
 	var expectedMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 	if header.Magic != expectedMagic {
 		return header, errors.New("invalid magic")
 	}
 
-	// Reject connections from incompatible protocol versions before parsing the body.
 	if header.Version != 0x01 {
 		return header, errors.New("unsupported version")
 	}

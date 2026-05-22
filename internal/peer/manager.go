@@ -12,17 +12,14 @@ func NewPeerManager() *PeerManager {
 	}
 }
 
-// Register adds or replaces a peer in the registry.
-// If a peer with the same ID already exists it is silently overwritten,
-// which is the correct behavior when a peer reconnects.
+// Register adds or replaces a peer. Silent overwrite is correct on reconnect.
 func (pm *PeerManager) Register(p *Peer) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.peers[p.ID] = p
 }
 
-// Get retrieves a peer connection by ID.
-// Returns the peer and true if found, nil and false otherwise.
+// Get retrieves a peer connection by ID. Returns nil, false if not found.
 func (pm *PeerManager) Get(id uuid.UUID) (*Peer, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()

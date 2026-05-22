@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,15 +24,15 @@ const (
 type LinkType uint8
 
 const (
-	LinkSym  LinkType = iota // Symbolic link — points to a path, survives file replacement.
-	LinkHard                 // Hard link — shares the inode, breaks if the original is deleted.
+	LinkSym  LinkType = iota
+	LinkHard
 )
 
 // Link represents an active remote link established with a peer.
 type Link struct {
-	ID      uint32 // Unique within this peer; auto-incremented, not globally unique.
-	Local   string // Path on this machine where the link was created.
-	Remote  string // Path on the peer's machine that the link points to.
+	ID      uint32 // Unique within this peer only, not globally.
+	Local   string
+	Remote  string
 	Type    LinkType
 	Created time.Time
 }
@@ -42,10 +43,16 @@ type Peer struct {
 	PubKey ed25519.PublicKey
 	Conn   net.Conn
 	State  State
-	Links  []Link // Active links established with this peer. Lifecycle mirrors the peer's.
+	Links  []Link
 	// Mu guards writes to Conn. Exported so network.SendTCP can lock it directly;
 	// both the TCP read goroutine and the IPC handler goroutine may write concurrently.
-	Mu sync.Mutex
+	Mu        sync.Mutex
+	nextReqID atomic.Uint32
+}
+
+// NextReqID returns a new request ID scoped to this peer, starting from 1.
+func (p *Peer) NextReqID() uint32 {
+	return p.nextReqID.Add(1)
 }
 
 // PeerManager maintains a thread-safe registry of active peer connections.

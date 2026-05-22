@@ -4,8 +4,18 @@ package config
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"strings"
 )
+
+// DataDir returns the base directory where lnn stores all persistent data.
+func DataDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".lnn"), nil
+}
 
 // LoadEnv reads KEY=VALUE pairs from path and sets them as environment variables.
 // Lines without '=' are silently skipped. Returns an error if the file cannot

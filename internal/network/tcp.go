@@ -4,24 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
+
 	"lnn/internal/identity"
+	"lnn/internal/iocore"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
-	"net"
-	"os"
 )
 
 // ConnectTCP establishes a TCP connection to the given IP address.
-// Uses TCP_PORT environment variable for the port.
 func ConnectTCP(ip string) (net.Conn, error) {
 	port := os.Getenv("TCP_PORT")
 	return net.Dial("tcp", ip+":"+port)
 }
 
 // ListenTCP binds to TCP_PORT and accepts incoming peer connections indefinitely.
-// Returns only if the bind fails; a successful call never returns.
-func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) error {
+func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager, ioc *iocore.Manager) error {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -33,24 +33,22 @@ func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager) error {
 			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
 			continue
 		}
-		go HandleConnTCP(conn, i, pm)
+		go HandleConnTCP(conn, i, pm, ioc)
 	}
 }
 
 // SendTCP encodes and sends a protocol message to a peer.
-// Safe to call concurrently from multiple goroutines.
 func SendTCP(p *peer.Peer, data protocol.Message) error {
 	packet := data.Encode()
 
-	// Since either IPC or TCP server can send packets, we need to lock with mutex before the write operation to avoid collisions.
+	// Both the TCP read loop and the IPC handler can send; lock to avoid interleaving.
 	p.Mu.Lock()
 	defer p.Mu.Unlock()
 	_, err := p.Conn.Write(packet)
 	return err
 }
 
-// In order to send packets when the peer is not initialized, we need to write without locking.
-// This is actually not an issue since no other service than handshake is allowed to send messages while the auth process is happening.
+// Pre-handshake only: no Peer exists yet and the conn is owned by a single goroutine, so no lock needed.
 func sendRaw(conn net.Conn, data protocol.Message) error {
 	packet := data.Encode()
 
@@ -59,8 +57,7 @@ func sendRaw(conn net.Conn, data protocol.Message) error {
 	return err
 }
 
-// ReceiveTCP reads a complete protocol message from conn and returns it as the
-// appropriate concrete type. Blocks until a full message arrives or an error occurs.
+// ReceiveTCP reads a complete protocol message from conn and returns it as the appropriate concrete type.
 func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 	header, err := protocol.ReadHeader(conn)
 	if err != nil {
@@ -108,7 +105,7 @@ func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 		if err != nil {
 			return protocol.SymLinkRequest{}, err
 		}
-		
+
 		return protocol.ParseSymLinkRequest(payload)
 
 	default:

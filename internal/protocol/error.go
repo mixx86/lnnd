@@ -46,22 +46,23 @@ func ParseError(payload []byte) (ErrorMessage, error) {
 	code := int64(binary.BigEndian.Uint64(payload[:CodeErrorMessageSize]))
 	raw := payload[CodeErrorMessageSize:]
 	n := 0
-	// The message field is zero-padded to a fixed size on the wire; scan to the first
-	// null byte to recover the original string without trailing garbage.
+	// Message field is zero-padded on the wire; stop at the first null byte.
 	for n < ErrorMessageSize && raw[n] != 0 {
 		n++
 	}
 	return ErrorMessage{Code: code, Message: string(raw[:n])}, nil
 }
 
-// Error code constants.
 const (
-	ErrInvalidMessage int64 = -1
-	ErrInvalidState   int64 = -2
+	ErrInvalidMessage  int64 = -1
+	ErrInvalidState    int64 = -2
+	ErrRequestRejected int64 = -3
+	ErrOverloaded      int64 = -4
 )
 
-// Error message string constants.
 const (
-	MsgErrInvalidMessage = "Invalid message."
-	MsgErrInvalidState   = "Invalid state."
+	MsgErrInvalidMessage  = "Invalid message."
+	MsgErrInvalidState    = "Invalid state."
+	MsgErrRequestRejected = "Request rejected."
+	MsgErrOverloaded      = "Daemon overloaded."
 )

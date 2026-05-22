@@ -28,7 +28,6 @@ func (m ChallengeMessage) Encode() []byte {
 func ParseChallenge(payload []byte) (ChallengeMessage, error) {
 	var parsedPayload ChallengeMessage
 	copy(parsedPayload.Nonce[:], payload)
-
 	return parsedPayload, nil
 }
 
@@ -77,6 +76,5 @@ func EncodeChallengeResp(sig [ChallengeRespPayloadSize]byte) []byte {
 func ParseChallengeResp(payload []byte) (ChallengeRespMessage, error) {
 	var parsedPayload ChallengeRespMessage
 	copy(parsedPayload.Signature[:], payload)
-
 	return parsedPayload, nil
 }

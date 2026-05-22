@@ -9,8 +9,6 @@ import (
 )
 
 // OutBoundHandshake authenticates this node to a remote peer as the initiating side.
-// Sends HELLO and CHALLENGE before receiving the peer's credentials, so both sides
-// authenticate each other (mutual authentication) before any application data flows.
 func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerManager) error {
 	creds := i.Creds()
 	nonce, err := protocol.GenerateNonce()
@@ -59,8 +57,7 @@ func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerM
 		return fmt.Errorf("error verifying the key")
 	}
 
-	// We verify the peer's signature before sending our own — this ensures we never
-	// sign anything for a peer we haven't authenticated yet.
+	// Verify the peer's signature before sending ours — never sign for an unauthenticated peer.
 	signature := protocol.ResolveNonce(creds.PrivKey, challengeMsg.Nonce)
 	err = sendRaw(conn, protocol.ChallengeRespMessage{
 		Signature: signature,
@@ -79,8 +76,7 @@ func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerM
 }
 
 // InBoundHandshake authenticates an incoming connection as the accepting side.
-// Receives the initiator's HELLO and CHALLENGE before sending its own, then verifies
-// the initiator's signature. Returns a verified Peer registered in pm.
+// Returns a verified Peer registered in pm.
 func InBoundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) (*peer.Peer, error) {
 	HelloMsg, err := ReceiveTCP(conn)
 	if err != nil {

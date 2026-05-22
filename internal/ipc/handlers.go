@@ -10,9 +10,7 @@ import (
 )
 
 // Validate checks and normalizes an IPC request.
-// Expects Src in "IP://path" format; extracts the IP into req.IP and
-// cleans the path component. Returns an error if the format is invalid
-// or the IP address cannot be parsed.
+// Expects Src in "IP://path" format; extracts the IP and cleans the path component.
 func Validate(req *Request) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
@@ -34,7 +32,6 @@ func Validate(req *Request) error {
 }
 
 // HandleRequest dispatches an incoming IPC request to the appropriate handler.
-// Validates the request before dispatching; unknown operations and types are logged and dropped.
 func HandleRequest(req *Request) {
 	switch req.Op {
 	case "link":
