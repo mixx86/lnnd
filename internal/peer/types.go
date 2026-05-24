@@ -2,6 +2,7 @@ package peer
 
 import (
 	"crypto/ed25519"
+	"lnn/internal/protocol"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -37,26 +38,30 @@ type Link struct {
 	Created time.Time
 }
 
-// Peer represents an authenticated remote peer and its associated connection.
-type Peer struct {
-	ID     uuid.UUID
-	PubKey ed25519.PublicKey
-	Conn   net.Conn
-	State  State
+// Peer holds the identity of an authenticated remote peer.
+type RemoteNode struct {
+  ID     uuid.UUID
+  PubKey ed25519.PublicKey
+}
+
+// SelfNode holds the local runtime data this node maintains for a peer connection.
+type SelfNode struct {
+  MsgID   atomic.Uint32
+  Pending map[uint32]chan protocol.Message
+}
+
+type Session struct {
+  Remote *RemoteNode
+  Self   *SelfNode
 	Links  []Link
-	// Mu guards writes to Conn. Exported so network.SendTCP can lock it directly;
-	// both the TCP read goroutine and the IPC handler goroutine may write concurrently.
-	Mu        sync.Mutex
-	nextReqID atomic.Uint32
+	Conn   net.Conn
+	// Mu guards writes to Conn; both the TCP read goroutine and the IPC handler goroutine may write concurrently.
+	Mu     sync.Mutex
+	State   State
 }
 
-// NextReqID returns a new request ID scoped to this peer, starting from 1.
-func (p *Peer) NextReqID() uint32 {
-	return p.nextReqID.Add(1)
-}
-
-// PeerManager maintains a thread-safe registry of active peer connections.
-type PeerManager struct {
+// SessionManager maintains a thread-safe registry of active sessions.
+type SessionManager struct {
 	mu    sync.RWMutex
-	peers map[uuid.UUID]*Peer
+	sessions map[uuid.UUID]*Session
 }

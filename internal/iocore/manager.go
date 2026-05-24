@@ -5,7 +5,6 @@ package iocore
 import (
 	"os"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"lnn/internal/peer"
@@ -23,12 +22,6 @@ func reqChannelSize() int {
 	return defaultReqChannelSize
 }
 
-// Manager coordinates the inbound request queue and io_uring pressure signal.
-type Manager struct {
-	reqCh      chan PendingRequest
-	ioPressure atomic.Int32
-	pressureDone	chan struct{}
-}
 
 // New creates and initialises an iocore Manager.
 func New() *Manager {
@@ -37,9 +30,9 @@ func New() *Manager {
 	}
 }
 
-func (m *Manager) makePending(from *peer.Peer, req protocol.InboundRequest) PendingRequest {
+func (m *Manager) makePending(from *peer.RemoteNode, req protocol.InboundRequest) PendingRequest {
 	return PendingRequest{
-		ID:      from.NextReqID(),
+		ID:      m.reqCounter.Add(1),
 		From:    from,
 		Req:     req,
 		Written: make(chan struct{}),
@@ -47,7 +40,7 @@ func (m *Manager) makePending(from *peer.Peer, req protocol.InboundRequest) Pend
 }
 
 // TryEnqueue attempts a non-blocking send. Returns (pr, true) if enqueued, (zero, false) if the channel is full.
-func (m *Manager) TryEnqueue(from *peer.Peer, req protocol.InboundRequest) (PendingRequest, bool) {
+func (m *Manager) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRequest) (PendingRequest, bool) {
 	pr := m.makePending(from, req)
 	select {
 	case m.reqCh <- pr:
@@ -58,7 +51,7 @@ func (m *Manager) TryEnqueue(from *peer.Peer, req protocol.InboundRequest) (Pend
 }
 
 // Enqueue waits up to timeout for space in the channel. Returns (pr, true) if enqueued, (zero, false) on timeout.
-func (m *Manager) Enqueue(from *peer.Peer, req protocol.InboundRequest, timeout time.Duration) (PendingRequest, bool) {
+func (m *Manager) Enqueue(from *peer.RemoteNode, req protocol.InboundRequest, timeout time.Duration) (PendingRequest, bool) {
 	pr := m.makePending(from, req)
 	select {
 	case m.reqCh <- pr:

@@ -13,7 +13,7 @@ import (
 )
 
 // 5-second handshake deadline: prevents a slow or malicious peer from holding the goroutine forever.
-func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager, ioc *iocore.Manager) {
+func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore.Manager) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
@@ -35,7 +35,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
 		return
 	}
-	p, err := InBoundHandshake(conn, i, pm)
+	p, err := InBoundHandshake(conn, i, sm)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
@@ -60,30 +60,30 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 }
 
 // HandleTCPMessage processes application-layer messages for peers in StateVerified.
-func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer, ioc *iocore.Manager) error {
+func HandleTCPMessage(conn net.Conn, msg protocol.Message, s *peer.Session, ioc *iocore.Manager) error {
 	switch m := msg.(type) {
 	case protocol.ErrorMessage:
-		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
+		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
 	case protocol.SymLinkRequest:
-		pr, ok := ioc.TryEnqueue(p, m)
+		pr, ok := ioc.TryEnqueue(s.Remote, m)
 		if !ok {
 			if ioc.Pressure() == 0 {
 				// WAL is the bottleneck — genuine overload, fail immediately.
-				SendTCP(p, protocol.ErrorMessage{
+				SendTCP(s, protocol.ErrorMessage{
 					Code:    protocol.ErrOverloaded,
 					Message: protocol.MsgErrOverloaded,
 				})
-				return fmt.Errorf("WAL overloaded, rejected request from peer %v", p.ID)
+				return fmt.Errorf("WAL overloaded, rejected request from peer %v", s.Remote.ID)
 			}
 
-			pr, ok = ioc.Enqueue(p, m, 5*time.Second)
+			pr, ok = ioc.Enqueue(s.Remote, m, 5*time.Second)
 			if !ok {
-				SendTCP(p, protocol.ErrorMessage{
+				SendTCP(s, protocol.ErrorMessage{
 					Code:    protocol.ErrOverloaded,
 					Message: protocol.MsgErrOverloaded,
 				})
-				return fmt.Errorf("backpressure timeout, rejected request from peer %v", p.ID)
+				return fmt.Errorf("backpressure timeout, rejected request from peer %v", s.Remote.ID)
 			}
 		}
 		go func() {
@@ -93,17 +93,17 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer, ioc *io
 		return nil
 
 	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
-		SendTCP(p, protocol.ErrorMessage{
+		SendTCP(s, protocol.ErrorMessage{
 			Code:    protocol.ErrInvalidState,
 			Message: protocol.MsgErrInvalidState,
 		})
-		return fmt.Errorf("handshake message received in state %v from peer %v", p.State, p.ID)
+		return fmt.Errorf("handshake message received in state %v from peer %v", s.State, s.Remote.ID)
 
 	default:
-		SendTCP(p, protocol.ErrorMessage{
+		SendTCP(s, protocol.ErrorMessage{
 			Code:    protocol.ErrInvalidMessage,
 			Message: protocol.MsgErrInvalidMessage,
 		})
-		return fmt.Errorf("unknown message type from peer %v", p.ID)
+		return fmt.Errorf("unknown message type from peer %v", s.Remote.ID)
 	}
 }

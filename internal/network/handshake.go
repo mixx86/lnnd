@@ -9,7 +9,7 @@ import (
 )
 
 // OutBoundHandshake authenticates this node to a remote peer as the initiating side.
-func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerManager) error {
+func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.SessionManager) error {
 	creds := i.Creds()
 	nonce, err := protocol.GenerateNonce()
 	if err != nil {
@@ -66,18 +66,15 @@ func OutBoundHandshake(conn net.Conn, i *identity.IdentityService, p *peer.PeerM
 		return err
 	}
 
-	p.Register(&peer.Peer{
-		ID:     helloMsg.ID,
-		PubKey: helloMsg.PublicKey,
-		Conn:   conn,
-		State:  peer.StateVerified,
-	})
+	sm.Register(
+		peer.NewSession(helloMsg.ID, helloMsg.PublicKey, conn),
+	)
 	return nil
 }
 
 // InBoundHandshake authenticates an incoming connection as the accepting side.
 // Returns a verified Peer registered in pm.
-func InBoundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) (*peer.Peer, error) {
+func InBoundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.SessionManager) (*peer.Session, error) {
 	HelloMsg, err := ReceiveTCP(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the HELLO message")
@@ -131,12 +128,8 @@ func InBoundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.PeerM
 		return nil, fmt.Errorf("error verifying the key")
 	}
 
-	p := peer.Peer{
-		ID:     helloMsg.ID,
-		PubKey: helloMsg.PublicKey,
-		Conn:   conn,
-		State:  peer.StateVerified,
-	}
-	pm.Register(&p)
-	return &p, nil
+	session := peer.NewSession(helloMsg.ID, helloMsg.PublicKey, conn)
+	
+	pm.Register(session)
+	return session, nil
 }

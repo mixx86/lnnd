@@ -21,7 +21,7 @@ func ConnectTCP(ip string) (net.Conn, error) {
 }
 
 // ListenTCP binds to TCP_PORT and accepts incoming peer connections indefinitely.
-func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager, ioc *iocore.Manager) error {
+func ListenTCP(i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore.Manager) error {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -33,18 +33,18 @@ func ListenTCP(i *identity.IdentityService, pm *peer.PeerManager, ioc *iocore.Ma
 			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
 			continue
 		}
-		go HandleConnTCP(conn, i, pm, ioc)
+		go HandleConnTCP(conn, i, sm, ioc)
 	}
 }
 
 // SendTCP encodes and sends a protocol message to a peer.
-func SendTCP(p *peer.Peer, data protocol.Message) error {
+func SendTCP(s *peer.Session, data protocol.Message) error {
 	packet := data.Encode()
 
 	// Both the TCP read loop and the IPC handler can send; lock to avoid interleaving.
-	p.Mu.Lock()
-	defer p.Mu.Unlock()
-	_, err := p.Conn.Write(packet)
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	_, err := s.Conn.Write(packet)
 	return err
 }
 

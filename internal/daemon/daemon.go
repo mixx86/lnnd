@@ -16,7 +16,7 @@ import (
 // Daemon represents the main LNN daemon instance.
 type Daemon struct {
 	Identity *identity.IdentityService
-	Peers    *peer.PeerManager
+	Sessions    *peer.SessionManager
 	IO       *iocore.Manager
 	WAL      *wal.Writer
 }
@@ -28,7 +28,7 @@ func New() (*Daemon, error) {
 		return nil, err
 	}
 
-	peerMgr := peer.NewPeerManager()
+	sessionMgr := peer.NewSessionManager()
 	ioMgr := iocore.New()
 
 	dataDir, err := config.DataDir()
@@ -39,7 +39,7 @@ func New() (*Daemon, error) {
 
 	return &Daemon{
 		Identity: identitySvc,
-		Peers:    peerMgr,
+		Sessions:    sessionMgr,
 		IO:       ioMgr,
 		WAL:      walWriter,
 	}, nil
@@ -53,7 +53,7 @@ func (d *Daemon) Start() error {
 
 	go func() {
 		// TCP bind failure is fatal: the daemon cannot accept peer connections without it.
-		if err := network.ListenTCP(d.Identity, d.Peers, d.IO); err != nil {
+		if err := network.ListenTCP(d.Identity, d.Sessions, d.IO); err != nil {
 			log.Fatalf("TCP listener failed to start: %v", err)
 		}
 	}()
