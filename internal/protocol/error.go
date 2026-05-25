@@ -58,6 +58,8 @@ const (
 	ErrInvalidState    int64 = -2
 	ErrRequestRejected int64 = -3
 	ErrOverloaded      int64 = -4
+	ErrTooManyPending  int64 = -5
+	ErrPendingTimeout  int64 = -6
 )
 
 const (
@@ -65,4 +67,5 @@ const (
 	MsgErrInvalidState    = "Invalid state."
 	MsgErrRequestRejected = "Request rejected."
 	MsgErrOverloaded      = "Daemon overloaded."
+	MsgErrPendingTimeout  = "Timed out waiting for a response."
 )

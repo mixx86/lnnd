@@ -47,6 +47,7 @@ type Header struct {
 	Magic         [4]byte
 	Version       uint8
 	Type          uint8
+	Tag           uint16
 	PayloadLength uint32
 }
 
@@ -54,13 +55,15 @@ const (
 	MagicSize   = 4
 	VersionSize = 1
 	TypeSize    = 1
+	TagSize     = 2
 	LenSize     = 4
 
 	OffsetMagic   = 0
 	OffsetVersion = 4
 	OffsetType    = 5
-	OffsetLen     = 6
-	OffsetBody    = 10
+	OffsetTag     = 6
+	OffsetLen     = 8
+	OffsetBody    = 12
 )
 const HeaderSize = MagicSize + VersionSize + TypeSize + LenSize
 

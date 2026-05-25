@@ -46,7 +46,8 @@ type RemoteNode struct {
 
 // SelfNode holds the local runtime data this node maintains for a peer connection.
 type SelfNode struct {
-  MsgID   atomic.Uint32
+  Tag   atomic.Uint32
+	PendingMu  sync.Mutex
   Pending map[uint32]chan protocol.Message
 }
 
