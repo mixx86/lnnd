@@ -25,8 +25,11 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 - [x] Concurrent write protection on `Peer` — `sendMu sync.Mutex` + `sendRaw` for handshake (which doesn't have a peer yet), `SendTCP(*Peer)` post-handshake
 - [ ] Link message handling in the daemon (`LINK_SYM_REQUEST`, `LINK_HARD_REQUEST`)
 - [ ] IPC → network bridge (forward CLI requests to the correct peer)
-- [ ] `lnn <ip>://path ./link` — remote symlink via CLI
-- [ ] `lnn <ip>://path ./link` — remote hard link via CLI
+- [ ] `lnn <ip>://path ./link` — remote hard link, local copy (default)
+- [ ] `lnn -s <ip>://path ./link` — remote symlink, virtual via FUSE (default for `-s`)
+- [ ] `lnn -s --local <ip>://path ./link` — remote symlink, local copy
+- [ ] `lnn --virtual <ip>://path ./link` — remote hard link, virtual via FUSE (inode-tracked)
+- [ ] FUSE mount (`~/.lnn/mnt/`) — intercepts file access for virtual links, lnnd serves data from remote peer on open
 - [ ] `OK` / `ERROR` response propagation back to CLI
 - [ ] Graceful connection teardown (`StateClosing`)
 
@@ -126,6 +129,8 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 - [ ] `--analyze` — show inode info, hard link count, link targets
 - [ ] `--graph` — visualize link relationships between peers
 - [ ] High-throughput mode — thousands of concurrent links; io_uring for transfers >64 KB (submission/completion queues, zero syscall overhead in the hot path)
+- [ ] FUSE data-path optimization — splice for zero-copy serving (socket → pipe → `/dev/fuse`, no userspace buffer); POLL_ADD on `/dev/fuse` fd for non-blocking operation; FUSE_URING (kernel 6.14+) for direct kernel↔daemon ring without extra context switches per FUSE op
+- [ ] QUIC transport — replace TCP+TLS with QUIC (independent streams per connection, no head-of-line blocking between concurrent link operations; evaluate after Phase 7)
 - [ ] Configurable encryption method per peer
 
 ---
@@ -133,5 +138,5 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 ## Ideas / Backlog
 *Not scheduled, subject to change.*
 
-- mDNS peer discovery on the local network
+- Custom UDP multicast peer discovery — signed Ed25519 announcements (UUID + port + timestamp + pubkey + signature); `lnn --peers local` with terminal UI listing nearby lnnd nodes for easy `--add-peer`
 - `lnn` man page

@@ -65,7 +65,7 @@ const (
 	OffsetLen     = 8
 	OffsetBody    = 12
 )
-const HeaderSize = MagicSize + VersionSize + TypeSize + LenSize
+const HeaderSize = MagicSize + VersionSize + TypeSize + TagSize + LenSize
 
 var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
@@ -80,13 +80,13 @@ func ReadHeader(r io.Reader) (Header, error) {
 		return header, err
 	}
 
-	copy(header.Magic[:], headerBuf[0:4])
-	header.Version = headerBuf[4]
-	header.Type = headerBuf[5]
-	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[6:10])
+	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
+	header.Version = headerBuf[OffsetVersion]
+	header.Type = headerBuf[OffsetType]
+	header.Tag = binary.BigEndian.Uint16(headerBuf[OffsetTag:OffsetTag+TagSize])
+	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[OffsetLen:OffsetLen+LenSize])
 
-	var expectedMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
-	if header.Magic != expectedMagic {
+	if header.Magic != [4]byte{0x4C, 0x4E, 0x4E, 0x00} {
 		return header, errors.New("invalid magic")
 	}
 
@@ -95,4 +95,12 @@ func ReadHeader(r io.Reader) (Header, error) {
 	}
 
 	return header, nil
+}
+
+func EncodeHeader(packet []byte, msg uint8, tag uint16, length uint32) {
+	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
+	packet[OffsetVersion] = protocolVersion
+	packet[OffsetType] = msg
+	binary.BigEndian.PutUint16(packet[OffsetTag:OffsetTag+TagSize], tag)
+	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetLen+LenSize], length)
 }

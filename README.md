@@ -1,6 +1,8 @@
-# lnn
+# lnn (LiNk + Networks)
 
 **lnn** extends the Unix `ln` command with network capabilities — create persistent links to files on remote machines as if they were local.
+
+The name doubles as the protocol: **LiNk + Networks** — Unix `ln` (link) plus an extra `n` for *network*. The daemon speaks **LNNP**, the *LiNk + Networks Protocol*.
 
 > Work in progress — core protocol implemented, link operations in development.
 
@@ -15,7 +17,7 @@ lnn --peers                                   # list known peers
 lnn consists of two components:
 
 - **`lnn`** — CLI client (C). Drop-in replacement for `ln` with network extensions.
-- **`lnnd`** — Background daemon (Go). Manages peer connections, the wire protocol, and link persistence.
+- **`lnnd`** — Background daemon (Go). Manages peer connections, the **LNNP** wire protocol, and link persistence.
 
 The CLI sends requests to the local daemon over a Unix socket. The daemon handles all TCP communication with remote peers, authenticating each one via Ed25519 mutual handshake before exchanging any data.
 
@@ -35,10 +37,21 @@ make
 
 ### Remote links
 
+Remote links have two orthogonal dimensions: **resolution** (symlink = path-based, hard link = inode-based) and **locality** (virtual = data stays on remote peer, local = data copied to this machine).
+
+| | Virtual (no local copy) | Local (copy) |
+|---|---|---|
+| **Symlink (`-s`)** | `lnn -s peer://path ./link` | `lnn -s --local peer://path ./link` |
+| **Hard link** | `lnn --virtual peer://path ./link` | `lnn peer://path ./link` |
+
+Default for `-s` is virtual (no copy); default for hard link is local. Both defaults follow Unix convention.
+
 ```bash
-lnn 192.168.1.34://path/to/file.txt ./local_link    #  explicit hardlink to a remote file
-lnn -s 192.168.1.34://path/to/file.txt ./local_link # explicit symlink to a remote file
-lnn 192.168.1.34 ./local_link                      # open request — remote chooses the file
+lnn -s 192.168.1.34://path/to/file.txt ./link          # symlink, virtual — lnnd serves on access
+lnn -s --local 192.168.1.34://path/to/file.txt ./link  # symlink, local copy
+lnn 192.168.1.34://path/to/file.txt ./link             # hard link, local copy
+lnn --virtual 192.168.1.34://path/to/file.txt ./link   # hard link, virtual — lnnd tracks inode
+lnn 192.168.1.34 ./local_link                          # open request — remote chooses the file
 ```
 
 ### Peer management

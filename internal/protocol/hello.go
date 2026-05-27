@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"crypto/ed25519"
-	"encoding/binary"
 
 	"github.com/google/uuid"
 )
@@ -20,10 +19,7 @@ type HelloMessage struct {
 func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
 	packet := make([]byte, HeaderSize+HelloPayloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgHello
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], HelloPayloadSize)
+	EncodeHeader(packet, MsgHello, 0, HelloPayloadSize)
 
 	cursor := OffsetBody
 	copy(packet[cursor:cursor+UUIDSize], id[:])
