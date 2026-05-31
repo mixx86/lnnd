@@ -12,36 +12,31 @@ const (
 )
 
 // ErrorMessage signals a protocol error to the remote peer.
-type ErrorMessage struct {
+type Error struct {
 	Code    int64
 	Message string
 }
 
 // EncodeErrorMessage constructs a complete error message packet.
 // Payload layout: [code:8][message:35]
-func EncodeErrorMessage(code int64, message string) []byte {
+func EncodeError(code int64, message string) []byte {
 	packet := make([]byte, HeaderSize+ErrorMessagePayloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgError
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ErrorMessagePayloadSize)
-
-	binary.BigEndian.PutUint64(packet[OffsetBody:], uint64(code))
-	copy(packet[OffsetBody+CodeErrorMessageSize:], message)
+	binary.BigEndian.PutUint64(packet[:], uint64(code))
+	copy(packet[CodeErrorMessageSize:], message)
 
 	return packet
 }
 
 // Encode serializes the error message into wire format.
-func (m ErrorMessage) Encode() []byte {
-	return EncodeErrorMessage(m.Code, m.Message)
+func (e Error) Encode() []byte {
+	return EncodeError(e.Code, e.Message)
 }
 
 // ParseError deserializes an error message from raw bytes.
-func ParseError(payload []byte) (ErrorMessage, error) {
+func ParseError(payload []byte) (Error, error) {
 	if len(payload) != ErrorMessagePayloadSize {
-		return ErrorMessage{}, errors.New("invalid payload size")
+		return Error{}, errors.New("invalid payload size")
 	}
 	code := int64(binary.BigEndian.Uint64(payload[:CodeErrorMessageSize]))
 	raw := payload[CodeErrorMessageSize:]
@@ -50,8 +45,11 @@ func ParseError(payload []byte) (ErrorMessage, error) {
 	for n < ErrorMessageSize && raw[n] != 0 {
 		n++
 	}
-	return ErrorMessage{Code: code, Message: string(raw[:n])}, nil
+	return Error{Code: code, Message: string(raw[:n])}, nil
 }
+
+func (Error) Type() uint8  { return MsgError }
+func (Error) Size() uint32 { return ErrorMessageSize }
 
 const (
 	ErrInvalidMessage  int64 = -1

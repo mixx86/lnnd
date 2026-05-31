@@ -9,39 +9,40 @@ import (
 // HelloPayloadSize is the size in bytes of a hello message payload (UUID + public key).
 const HelloPayloadSize uint32 = 48
 
-// HelloMessage contains peer identification information.
-type HelloMessage struct {
+// Hello contains peer identification information.
+type Hello struct {
 	ID        uuid.UUID
 	PublicKey ed25519.PublicKey
 }
 
-// EncodeHello constructs a complete hello message packet.
 func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
-	packet := make([]byte, HeaderSize+HelloPayloadSize)
-
-	EncodeHeader(packet, MsgHello, 0, HelloPayloadSize)
-
-	cursor := OffsetBody
-	copy(packet[cursor:cursor+UUIDSize], id[:])
-	cursor += UUIDSize
-	copy(packet[cursor:cursor+PublicKeySize], pubKey)
-
+	packet := make([]byte, HelloPayloadSize)
+	copy(packet[:UUIDSize], id[:])
+	copy(packet[UUIDSize:UUIDSize+PublicKeySize], pubKey)
 	return packet
 }
 
 // Encode serializes the hello message into wire format.
-func (m HelloMessage) Encode() []byte {
+func (m Hello) Encode() []byte {
 	return EncodeHello(m.ID, m.PublicKey)
 }
 
+func (Hello) Type() uint8 {
+	return MsgHello
+}
+
+func (Hello) Size() uint32 {
+	return HelloPayloadSize
+}
+
 // ParseHello deserializes a hello message from raw bytes.
-func ParseHello(payload []byte) (HelloMessage, error) {
-	var parsedPayload HelloMessage
+func ParseHello(payload []byte) (Hello, error) {
+	var parsedPayload Hello
 	cursor := 0
 
 	parsedID, err := uuid.FromBytes(payload[cursor : cursor+UUIDSize])
 	if err != nil {
-		return HelloMessage{}, err
+		return Hello{}, err
 	}
 	cursor += UUIDSize
 

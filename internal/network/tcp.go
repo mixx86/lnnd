@@ -38,7 +38,7 @@ func ListenTCP(i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore
 }
 
 // SendTCP encodes and sends a protocol message to a peer.
-func SendTCP(s *peer.Session, data protocol.Message) error {
+func SendTCP(s *peer.Session, data protocol.Frame) error {
 	packet := data.Encode()
 
 	// Both the TCP read loop and the IPC handler can send; lock to avoid interleaving.
@@ -49,7 +49,7 @@ func SendTCP(s *peer.Session, data protocol.Message) error {
 }
 
 // Pre-handshake only: no Peer exists yet and the conn is owned by a single goroutine, so no lock needed.
-func sendRaw(conn net.Conn, data protocol.Message) error {
+func sendRaw(conn net.Conn, data protocol.Frame) error {
 	packet := data.Encode()
 
 	_, err := conn.Write(packet)
@@ -58,10 +58,10 @@ func sendRaw(conn net.Conn, data protocol.Message) error {
 }
 
 // ReceiveTCP reads a complete protocol message from conn and returns it as the appropriate concrete type.
-func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
+func ReceiveTCP(conn net.Conn) (protocol.Frame, error) {
 	header, err := protocol.ReadHeader(conn)
 	if err != nil {
-		return nil, err
+		return protocol.Frame{}, err
 	}
 
 	switch header.Type {
@@ -70,45 +70,76 @@ func ReceiveTCP(conn net.Conn) (protocol.Message, error) {
 		_, err := io.ReadFull(conn, payload)
 
 		if err != nil {
-			return protocol.HelloMessage{}, err
+			return protocol.Frame{}, err
 		}
 
-		return protocol.ParseHello(payload)
+		hello, err := protocol.ParseHello(payload)
+		if err != nil {
+			return protocol.Frame{}, err
+		}
+
+		return protocol.Frame{
+			Header: header,
+			Body:   hello,
+		}, nil
 
 	case protocol.MsgChallenge:
 		payload := make([]byte, protocol.ChallengePayloadSize)
 		_, err := io.ReadFull(conn, payload)
 
 		if err != nil {
-			return protocol.ChallengeMessage{}, err
+			return protocol.Frame{}, err
 		}
 
-		return protocol.ParseChallenge(payload)
+		challenge, err := protocol.ParseChallenge(payload)
+		if err != nil {
+			return protocol.Frame{}, err
+		}
+
+		return protocol.Frame{
+			Header: header,
+			Body:   challenge,
+		}, nil
 
 	case protocol.MsgChallengeResp:
 		payload := make([]byte, protocol.ChallengeRespPayloadSize)
 		_, err := io.ReadFull(conn, payload)
 
 		if err != nil {
-			return protocol.ChallengeRespMessage{}, err
+			return protocol.Frame{}, err
 		}
 
-		return protocol.ParseChallengeResp(payload)
+		challenge, err := protocol.ParseChallengeResp(payload)
+		if err != nil {
+			return protocol.Frame{}, err
+		}
+		return protocol.Frame{
+			Header: header,
+			Body:   challenge,
+		}, nil
 
 	case protocol.MsgSymLinkRequest:
 		if header.PayloadLength > 8192 || header.PayloadLength < 3 {
-			return protocol.SymLinkRequest{}, errors.New("invalid payload size")
+			return protocol.Frame{}, errors.New("invalid payload size")
 		}
 		payload := make([]byte, header.PayloadLength)
 		_, err := io.ReadFull(conn, payload)
 
 		if err != nil {
-			return protocol.SymLinkRequest{}, err
+			return protocol.Frame{}, err
 		}
 
-		return protocol.ParseSymLinkRequest(payload)
+		symlinkreq, err := protocol.ParseSymLinkRequest(payload)
+		if err != nil {
+			return protocol.Frame{}, err
+		}
+
+		return protocol.Frame{
+			Header: header,
+			Body:   symlinkreq,
+		}, nil
 
 	default:
-		return nil, fmt.Errorf("unknown message type: %d", header.Type)
+		return protocol.Frame{}, fmt.Errorf("unknown message type: %d", header.Type)
 	}
 }

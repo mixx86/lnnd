@@ -25,7 +25,7 @@ const (
 type LinkType uint8
 
 const (
-	LinkSym  LinkType = iota
+	LinkSym LinkType = iota
 	LinkHard
 )
 
@@ -40,29 +40,29 @@ type Link struct {
 
 // Peer holds the identity of an authenticated remote peer.
 type RemoteNode struct {
-  ID     uuid.UUID
-  PubKey ed25519.PublicKey
+	ID     uuid.UUID
+	PubKey ed25519.PublicKey
 }
 
 // SelfNode holds the local runtime data this node maintains for a peer connection.
 type SelfNode struct {
-  Tag   atomic.Uint32
-	PendingMu  sync.Mutex
-  Pending map[uint32]chan protocol.Message
+	Tag       atomic.Uint32
+	PendingMu sync.Mutex
+	Pending   map[uint32]chan protocol.Payload
 }
 
 type Session struct {
-  Remote *RemoteNode
-  Self   *SelfNode
+	Remote *RemoteNode
+	Self   *SelfNode
 	Links  []Link
 	Conn   net.Conn
 	// Mu guards writes to Conn; both the TCP read goroutine and the IPC handler goroutine may write concurrently.
-	Mu     sync.Mutex
-	State   State
+	Mu    sync.Mutex
+	State State
 }
 
 // SessionManager maintains a thread-safe registry of active sessions.
 type SessionManager struct {
-	mu    sync.RWMutex
+	mu       sync.RWMutex
 	sessions map[uuid.UUID]*Session
 }

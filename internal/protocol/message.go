@@ -19,22 +19,50 @@ const (
 	MsgOk              uint8 = 8 // Success acknowledgment
 )
 
+type Frame struct {
+	Header Header
+	Body   Payload
+}
+
+func (m Frame) Encode() []byte {
+	packet := m.Header.Encode(m.Body.Type(), m.Body.Size())
+	packet = append(packet, m.Body.Encode()...)
+	return packet
+}
+
+func (m Frame) WithTag(tag uint16) Frame {
+	m.Header.Tag = tag
+	return m
+}
+
+func (h Header) Encode(msgType uint8, payloadLen uint32) []byte {
+	buf := make([]byte, HeaderSize)
+	copy(buf[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
+	buf[OffsetVersion] = protocolVersion
+	buf[OffsetType] = msgType
+	binary.BigEndian.PutUint16(buf[OffsetTag:OffsetTag+TagSize], h.Tag)
+	binary.BigEndian.PutUint32(buf[OffsetLen:OffsetLen+LenSize], payloadLen)
+	return buf
+}
+
 // Message is the interface for all protocol messages.
-type Message interface {
+type Payload interface {
 	Encode() []byte
+	Type() uint8
+	Size() uint32
 }
 
 // InboundRequest marks inbound messages handled as requests.
 type InboundRequest interface {
-	Message
-	RequestType() uint8
+	Payload
+	inboundRequest()
 }
 
 // OkMessage is a zero-payload acknowledgment sent after a message
 // has been successfully handled.
-type OkMessage struct{}
+type Ok struct{}
 
-func (OkMessage) Encode() []byte {
+func (Ok) Encode() []byte {
 	packet := make([]byte, HeaderSize)
 	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	packet[OffsetVersion] = protocolVersion
@@ -83,8 +111,8 @@ func ReadHeader(r io.Reader) (Header, error) {
 	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
 	header.Version = headerBuf[OffsetVersion]
 	header.Type = headerBuf[OffsetType]
-	header.Tag = binary.BigEndian.Uint16(headerBuf[OffsetTag:OffsetTag+TagSize])
-	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[OffsetLen:OffsetLen+LenSize])
+	header.Tag = binary.BigEndian.Uint16(headerBuf[OffsetTag : OffsetTag+TagSize])
+	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[OffsetLen : OffsetLen+LenSize])
 
 	if header.Magic != [4]byte{0x4C, 0x4E, 0x4E, 0x00} {
 		return header, errors.New("invalid magic")
@@ -95,12 +123,4 @@ func ReadHeader(r io.Reader) (Header, error) {
 	}
 
 	return header, nil
-}
-
-func EncodeHeader(packet []byte, msg uint8, tag uint16, length uint32) {
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = msg
-	binary.BigEndian.PutUint16(packet[OffsetTag:OffsetTag+TagSize], tag)
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetLen+LenSize], length)
 }

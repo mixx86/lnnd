@@ -70,7 +70,7 @@ func (w *Writer) Run() {
 			}
 		}
 
-	// Back off while io_uring threads are active — they have priority over disk I/O.
+		// Back off while io_uring threads are active — they have priority over disk I/O.
 	backoff:
 		for w.ioc.Pressure() > 0 {
 			select {
@@ -107,7 +107,7 @@ func (w *Writer) writeBatch(batch []iocore.PendingRequest) error {
 			fmt.Fprintf(os.Stderr, "wal: skipping request %d: %v\n", pr.ID, err)
 			continue
 		}
-		fmt.Fprintf(bw, "R|%d|%d|%s|%d|%s\n", ts, pr.Req.RequestType(), pr.From.ID, pr.ID, fields)
+		fmt.Fprintf(bw, "R|%d|%d|%s|%d|%s\n", ts, pr.Req.Type(), pr.From.ID, pr.ID, fields)
 	}
 	if err := bw.Flush(); err != nil {
 		return err

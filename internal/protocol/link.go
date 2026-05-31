@@ -17,18 +17,22 @@ type SymLinkRequest struct {
 // Payload layout: [src_len:2][src][dst_len:2][dst]
 // Variable-length rather than fixed 8 KB to avoid padding on every request.
 func EncodeSymLinkRequest(src string, dst string) []byte {
-	payloadSize := 2 + len(src) + 2 + len(dst)
-	packet := make([]byte, HeaderSize+payloadSize)
+	payloadSize := 2 + len(src)
+	if dst != "" {
+		payloadSize += 2 + len(dst)
+	}
+	packet := make([]byte, payloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgSymLinkRequest
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], uint32(payloadSize))
-
-	binary.BigEndian.PutUint16(packet[OffsetBody:], uint16(len(src)))
-	copy(packet[OffsetBody+2:], src)
-	binary.BigEndian.PutUint16(packet[OffsetBody+2+len(src):], uint16(len(dst)))
-	copy(packet[OffsetBody+2+len(src)+2:], dst)
+	cursor := 0
+	binary.BigEndian.PutUint16(packet[:], uint16(len(src)))
+	cursor += 2
+	copy(packet[cursor:], src)
+	if dst != "" {
+		cursor += len(src)
+		binary.BigEndian.PutUint16(packet[cursor:], uint16(len(dst)))
+		cursor += 2
+		copy(packet[cursor:], dst)
+	}
 
 	return packet
 }
@@ -38,8 +42,19 @@ func (r SymLinkRequest) Encode() []byte {
 	return EncodeSymLinkRequest(r.Src, r.Dst)
 }
 
-func (r SymLinkRequest) RequestType() uint8 { return MsgSymLinkRequest }
+func (SymLinkRequest) Type() uint8 { return MsgSymLinkRequest }
+func (r SymLinkRequest) Size() uint32 {
+	var payloadSize uint32
+	if r.Src != "" {
+		payloadSize += uint32(2 + len(r.Src))
+	}
 
+	if r.Dst != "" {
+		payloadSize += uint32(2 + len(r.Dst))
+	}
+
+	return payloadSize
+}
 
 // ParseSymLinkRequest decodes a symlink request from its binary wire format.
 func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
@@ -59,26 +74,25 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 	var Dst []byte
 	remaining := len(payload) - srcEnd
 	switch {
-		case remaining == 0:
-			// dst omitted — receiver decides the path on --accept.
+	case remaining == 0:
+		// dst omitted — receiver decides the path on --accept.
 
-		case remaining <= 2:
-			// dst_len present but no dst bytes: malformed.
-			return SymLinkRequest{}, errors.New("incongruent data: dst_len present but dst missing")
+	case remaining <= 2:
+		// dst_len present but no dst bytes: malformed.
+		return SymLinkRequest{}, errors.New("incongruent data: dst_len present but dst missing")
 
-		default:
-			lenDst := binary.BigEndian.Uint16(payload[srcEnd : srcEnd+2])
+	default:
+		lenDst := binary.BigEndian.Uint16(payload[srcEnd : srcEnd+2])
 
-			dstStart := srcEnd + 2
-	  	dstEnd := dstStart + int(lenDst)
+		dstStart := srcEnd + 2
+		dstEnd := dstStart + int(lenDst)
 
-			if len(payload) < dstEnd {
-				return SymLinkRequest{}, errors.New("payload too short for dst")
-			}
+		if len(payload) < dstEnd {
+			return SymLinkRequest{}, errors.New("payload too short for dst")
+		}
 
-			Dst = payload[dstStart:dstEnd]
+		Dst = payload[dstStart:dstEnd]
 	}
-
 
 	srcStr := string(payload[srcStart:srcEnd])
 	dstStr := ""
@@ -104,3 +118,5 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 		Dst: cleanDst,
 	}, nil
 }
+
+func (SymLinkRequest) inboundRequest() {}

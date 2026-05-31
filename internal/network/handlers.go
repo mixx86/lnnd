@@ -35,7 +35,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionM
 		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
 		return
 	}
-	p, err := InBoundHandshake(conn, i, sm)
+	p, err := InboundHandshake(conn, i, sm)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
@@ -60,9 +60,9 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionM
 }
 
 // HandleTCPMessage processes application-layer messages for peers in StateVerified.
-func HandleTCPMessage(conn net.Conn, msg protocol.Message, s *peer.Session, ioc *iocore.Manager) error {
-	switch m := msg.(type) {
-	case protocol.ErrorMessage:
+func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, ioc *iocore.Manager) error {
+	switch m := msg.Body.(type) {
+	case protocol.Error:
 		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
 	case protocol.SymLinkRequest:
@@ -70,19 +70,23 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Message, s *peer.Session, ioc 
 		if !ok {
 			if ioc.Pressure() == 0 {
 				// WAL is the bottleneck — genuine overload, fail immediately.
-				SendTCP(s, protocol.ErrorMessage{
-					Code:    protocol.ErrOverloaded,
-					Message: protocol.MsgErrOverloaded,
-				})
+				SendTCP(s, protocol.Frame{
+					Body: protocol.Error{
+						Code:    protocol.ErrOverloaded,
+						Message: protocol.MsgErrOverloaded,
+					},
+				}.WithTag(msg.Header.Tag))
 				return fmt.Errorf("WAL overloaded, rejected request from peer %v", s.Remote.ID)
 			}
 
 			pr, ok = ioc.Enqueue(s.Remote, m, 5*time.Second)
 			if !ok {
-				SendTCP(s, protocol.ErrorMessage{
-					Code:    protocol.ErrOverloaded,
-					Message: protocol.MsgErrOverloaded,
-				})
+				SendTCP(s, protocol.Frame{
+					Body: protocol.Error{
+						Code:    protocol.ErrOverloaded,
+						Message: protocol.MsgErrOverloaded,
+					},
+				}.WithTag(msg.Header.Tag))
 				return fmt.Errorf("backpressure timeout, rejected request from peer %v", s.Remote.ID)
 			}
 		}
@@ -92,17 +96,21 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Message, s *peer.Session, ioc 
 		}()
 		return nil
 
-	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
-		SendTCP(s, protocol.ErrorMessage{
-			Code:    protocol.ErrInvalidState,
-			Message: protocol.MsgErrInvalidState,
-		})
+	case protocol.Hello, protocol.Challenge, protocol.ChallengeResp:
+		SendTCP(s, protocol.Frame{
+			Body: protocol.Error{
+				Code:    protocol.ErrInvalidState,
+				Message: protocol.MsgErrInvalidState,
+			},
+		}.WithTag(msg.Header.Tag))
 		return fmt.Errorf("handshake message received in state %v from peer %v", s.State, s.Remote.ID)
 
 	default:
-		SendTCP(s, protocol.ErrorMessage{
-			Code:    protocol.ErrInvalidMessage,
-			Message: protocol.MsgErrInvalidMessage,
+		SendTCP(s, protocol.Frame{
+			Body: protocol.Error{
+				Code:    protocol.ErrInvalidMessage,
+				Message: protocol.MsgErrInvalidMessage,
+			},
 		})
 		return fmt.Errorf("unknown message type from peer %v", s.Remote.ID)
 	}

@@ -16,6 +16,11 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 - [x] Thread-safe peer registry (`PeerManager`)
 - [x] IPC — Unix socket + JSON request parsing
 - [x] Application message loop (`HandleTCPMessage`)
+- [x] Protocol redesign — `Message` struct (Header + Payload), `Payload` interface (`Encode`, `Type`, `Size`), `ReceiveTCP` returns `protocol.Message`
+- [x] Tag/correlation ID system — `RegisterPending` / `Resolve` / `CancelPending` for async request-response matching
+- [x] `SymLinkRequest` encoder/parser — variable-length payload, absolute path validation
+- [x] Inbound request queue (`iocore`) — non-blocking enqueue with backpressure from io_uring pressure signal
+- [x] Write-ahead log (`wal`) — append-only log with checkpoint and startup replay; tracks accept/reject resolutions
 
 ---
 
@@ -111,17 +116,7 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 
 ---
 
-## Phase 7 — Security hardening
-*Encrypt the transport layer.*
-
-- [ ] TLS 1.3 over TCP (replace plaintext transport)
-- [ ] Certificate pinning based on Ed25519 public key
-- [ ] Configurable cipher suites
-- [ ] Audit existing handshake for replay and MITM vectors
-
----
-
-## Phase 8 — Advanced features
+## Phase 7 — Advanced features
 *Power-user and observability features.*
 
 - [ ] `--sync` mode — keep remote link up to date with source changes
@@ -130,7 +125,7 @@ Development is tracked in phases. Each phase builds on the previous one and prod
 - [ ] `--graph` — visualize link relationships between peers
 - [ ] High-throughput mode — thousands of concurrent links; io_uring for transfers >64 KB (submission/completion queues, zero syscall overhead in the hot path)
 - [ ] FUSE data-path optimization — splice for zero-copy serving (socket → pipe → `/dev/fuse`, no userspace buffer); POLL_ADD on `/dev/fuse` fd for non-blocking operation; FUSE_URING (kernel 6.14+) for direct kernel↔daemon ring without extra context switches per FUSE op
-- [ ] QUIC transport — replace TCP+TLS with QUIC (independent streams per connection, no head-of-line blocking between concurrent link operations; evaluate after Phase 7)
+- [ ] QUIC transport — replace TCP with QUIC (TLS 1.3 built-in, certificate pinning via Ed25519 public key, independent streams per connection, no head-of-line blocking; audit handshake for replay and MITM vectors during migration)
 - [ ] Configurable encryption method per peer
 
 ---
