@@ -7,16 +7,18 @@ import (
 )
 
 // Message types for the LNN protocol.
+type MsgKind uint8
+
 const (
-	MsgHello           uint8 = 0 // Initial peer identification
-	MsgChallenge       uint8 = 1 // Authentication challenge
-	MsgChallengeResp   uint8 = 2 // Challenge response with signature
-	MsgError           uint8 = 3 // Error notification
-	MsgLinkSym         uint8 = 4 // Symbolic link operation
-	MsgLinkHard        uint8 = 5 // Hard link operation
-	MsgSymLinkRequest  uint8 = 6 // Request to create symbolic link
-	MsgHardLinkRequest uint8 = 7 // Request to create hard link
-	MsgOk              uint8 = 8 // Success acknowledgment
+	MsgHello           MsgKind = iota // Initial peer identification
+	MsgChallenge                      // Authentication challenge
+	MsgChallengeResp                  // Challenge response with signature
+	MsgError                          // Error notification
+	MsgLinkSym                        // Symbolic link operation
+	MsgLinkHard                       // Hard link operation
+	MsgSymLinkRequest                 // Request to create symbolic link
+	MsgHardLinkRequest                // Request to create hard link
+	MsgOk                             // Success acknowledgment
 )
 
 type Frame struct {
@@ -35,11 +37,11 @@ func (m Frame) WithTag(tag uint16) Frame {
 	return m
 }
 
-func (h Header) Encode(msgType uint8, payloadLen uint32) []byte {
+func (h Header) Encode(msgType MsgKind, payloadLen uint32) []byte {
 	buf := make([]byte, HeaderSize)
 	copy(buf[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	buf[OffsetVersion] = protocolVersion
-	buf[OffsetType] = msgType
+	buf[OffsetType] = byte(msgType)
 	binary.BigEndian.PutUint16(buf[OffsetTag:OffsetTag+TagSize], h.Tag)
 	binary.BigEndian.PutUint32(buf[OffsetLen:OffsetLen+LenSize], payloadLen)
 	return buf
@@ -48,7 +50,7 @@ func (h Header) Encode(msgType uint8, payloadLen uint32) []byte {
 // Message is the interface for all protocol messages.
 type Payload interface {
 	Encode() []byte
-	Type() uint8
+	Type() MsgKind
 	Size() uint32
 }
 
@@ -63,18 +65,23 @@ type InboundRequest interface {
 type Ok struct{}
 
 func (Ok) Encode() []byte {
-	packet := make([]byte, HeaderSize)
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgOk
+	packet := make([]byte, 0)
 	return packet
+}
+
+func (Ok) Type() MsgKind {
+	return MsgOk
+}
+
+func (Ok) Size() uint32 {
+	return 0
 }
 
 // Header represents the fixed-size protocol header. See architecture.md for the full layout.
 type Header struct {
 	Magic         [4]byte
 	Version       uint8
-	Type          uint8
+	Type          MsgKind
 	Tag           uint16
 	PayloadLength uint32
 }
@@ -110,7 +117,7 @@ func ReadHeader(r io.Reader) (Header, error) {
 
 	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
 	header.Version = headerBuf[OffsetVersion]
-	header.Type = headerBuf[OffsetType]
+	header.Type = MsgKind(headerBuf[OffsetType])
 	header.Tag = binary.BigEndian.Uint16(headerBuf[OffsetTag : OffsetTag+TagSize])
 	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[OffsetLen : OffsetLen+LenSize])
 

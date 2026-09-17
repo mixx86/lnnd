@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 
+	app "lnn/internal"
 	"lnn/internal/config"
 	"lnn/internal/identity"
-	"lnn/internal/iocore"
+
 	"lnn/internal/ipc"
 	"lnn/internal/network"
 	"lnn/internal/peer"
@@ -15,10 +16,7 @@ import (
 
 // Daemon represents the main LNN daemon instance.
 type Daemon struct {
-	Identity *identity.IdentityService
-	Sessions    *peer.SessionManager
-	IO       *iocore.Manager
-	WAL      *wal.Writer
+	app.Services
 }
 
 // New creates and initializes a new Daemon instance.
@@ -38,10 +36,12 @@ func New() (*Daemon, error) {
 	walWriter := wal.NewWriter(dataDir, ioMgr)
 
 	return &Daemon{
-		Identity: identitySvc,
-		Sessions:    sessionMgr,
-		IO:       ioMgr,
-		WAL:      walWriter,
+		Services: app.Services{
+			Identity: identitySvc,
+			Sessions: sessionMgr,
+			IO:       ioMgr,
+			WAL:      walWriter,
+		},
 	}, nil
 }
 
@@ -53,9 +53,9 @@ func (d *Daemon) Start() error {
 
 	go func() {
 		// TCP bind failure is fatal: the daemon cannot accept peer connections without it.
-		if err := network.ListenTCP(d.Identity, d.Sessions, d.IO); err != nil {
+		if err := network.ListenTCP(d.Services); err != nil {
 			log.Fatalf("TCP listener failed to start: %v", err)
 		}
 	}()
-	return ipc.ListenIPC()
+	return ipc.ListenIPC(d.Services)
 }

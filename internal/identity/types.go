@@ -13,7 +13,7 @@ type Credentials struct {
 	PubKey  ed25519.PublicKey  // Shared with peers during HELLO so they can verify our signatures.
 }
 
-// IdentityService manages node identity and credentials.
-type IdentityService struct {
+// IdentityService manages node identity and credentials
+type Service struct {
 	creds Credentials // Unexported to prevent external mutation after initialization.
 }

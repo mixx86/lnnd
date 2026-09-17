@@ -4,7 +4,7 @@ import "lnn/internal/protocol"
 
 const maxPending = 65536
 
-func (s *SelfNode) RegisterPending() (<-chan protocol.Payload, uint32, int64) {
+func (s *SelfNode) RegisterPendingMessage() (<-chan protocol.Payload, uint32, int64) {
 	s.PendingMu.Lock()
 	defer s.PendingMu.Unlock()
 	if len(s.Pending) >= maxPending {
@@ -24,7 +24,7 @@ func (s *SelfNode) RegisterPending() (<-chan protocol.Payload, uint32, int64) {
 	return ch, tag, 0
 }
 
-func (s *SelfNode) Resolve(tag uint32, msg protocol.Payload) {
+func (s *SelfNode) ResolveMessage(tag uint32, msg protocol.Payload) {
 	s.PendingMu.Lock()
 	ch, ok := s.Pending[tag]
 	if ok {
@@ -36,7 +36,7 @@ func (s *SelfNode) Resolve(tag uint32, msg protocol.Payload) {
 	}
 }
 
-func (s *SelfNode) CancelPending(tag uint32) {
+func (s *SelfNode) CancelPendingMessage(tag uint32) {
 	s.PendingMu.Lock()
 	ch, ok := s.Pending[tag]
 	if ok {

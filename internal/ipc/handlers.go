@@ -3,6 +3,10 @@ package ipc
 
 import (
 	"errors"
+	"fmt"
+	app "lnn/internal"
+	"lnn/internal/network"
+	"lnn/internal/protocol"
 	"log"
 	"net"
 	"path"
@@ -19,7 +23,7 @@ func Validate(req *Request) error {
 		return errors.New("expected IP")
 	}
 	parts := strings.SplitN(req.Src, "://", 2)
-	cleanPath := path.Clean(parts[1])
+	cleanPath := path.Clean("/" + parts[1])
 
 	ip := net.ParseIP(parts[0])
 	if ip == nil {
@@ -27,12 +31,12 @@ func Validate(req *Request) error {
 	}
 	req.IP = parts[0]
 
-	req.Src = parts[0] + "://" + cleanPath
+	req.Src = cleanPath
 	return nil
 }
 
 // HandleRequest dispatches an incoming IPC request to the appropriate handler.
-func HandleRequest(req *Request) {
+func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 	switch req.Op {
 	case "link":
 		if err := Validate(req); err != nil {
@@ -40,8 +44,58 @@ func HandleRequest(req *Request) {
 			return
 		}
 		switch req.Type {
-		case "sym":
-			log.Printf("Type: %v.\n", req.Type)
+		case "symreq":
+			// TODO: Verify if there's already a session with the same id/key
+			conn, err := network.ConnectTCP(req.IP)
+			if err != nil {
+				bytes, err := Response{
+					Ok:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return
+			}
+			session, err := network.OutboundHandshake(conn, s.Identity, s.Sessions)
+			if err != nil {
+				bytes, err := Response{
+					Ok:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return
+			}
+
+			fmt.Printf("%v", req.Src)
+			err = network.SendTCP(session, protocol.Frame{
+				Body: protocol.SymLinkRequest{
+					Src: req.Src,
+					Dst: req.Dst,
+				},
+			})
+			if err != nil {
+				return
+			}
+
+			bytes, err := Response{Ok: true, Err: ""}.Encode()
+			if err != nil {
+				return
+			}
+			_, err = unixConn.Write(bytes)
+			if err != nil {
+				return
+			}
 		case "hard":
 			log.Printf("Type: %v.\n", req.Type)
 		default:

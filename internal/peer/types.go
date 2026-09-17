@@ -61,7 +61,6 @@ type Session struct {
 	State State
 }
 
-// SessionManager maintains a thread-safe registry of active sessions.
 type SessionManager struct {
 	mu       sync.RWMutex
 	sessions map[uuid.UUID]*Session

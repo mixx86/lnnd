@@ -14,6 +14,10 @@
 // R=request, A=accepted, X=rejected, K=checkpoint.
 // <req_type> is the protocol message type byte (e.g. 6=SymLinkRequest).
 // Fields after <req_id> are type-specific; '|' inside field values is percent-encoded as %7C.
+// TODO: Add CRC, do this to binary instead of text, use just one file (`requests`) for everything instead of two,
+// and this is not a wal, we'll use a CRC for corrupted data, since we don't have big data amount, and this would go on store/requests.go,
+// and the req queue manager would go on the package queue, as requests.go
+// we have to also add constancy for the sent requests that have either not reply or en error reply, so we can resend those requests
 package wal
 
 import (
@@ -110,14 +114,20 @@ func (w *Writer) writeBatch(batch []iocore.PendingRequest) error {
 		fmt.Fprintf(bw, "R|%d|%d|%s|%d|%s\n", ts, pr.Req.Type(), pr.From.ID, pr.ID, fields)
 	}
 	if err := bw.Flush(); err != nil {
+		for _, pr := range batch {
+			pr.Written <- err
+		}
 		return err
 	}
 	if err := f.Sync(); err != nil {
+		for _, pr := range batch {
+			pr.Written <- err
+		}
 		return err
 	}
 
 	for _, pr := range batch {
-		close(pr.Written)
+		pr.Written <- nil
 	}
 
 	w.walLines += len(batch)

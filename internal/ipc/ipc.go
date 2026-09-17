@@ -2,13 +2,14 @@ package ipc
 
 import (
 	"io"
+	app "lnn/internal"
 	"log"
 	"net"
 	"os"
 )
 
 // One request per connection — each CLI invocation opens a fresh socket.
-func HandleConnUNIX(conn net.Conn) {
+func HandleConnUNIX(conn net.Conn, s app.Services) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			log.Printf("Error closing IPC connection: %v", err)
@@ -24,11 +25,11 @@ func HandleConnUNIX(conn net.Conn) {
 		log.Printf("Error deserializing json data: %v", err)
 		return
 	}
-	HandleRequest(&req)
+	HandleRequest(&req, conn, s)
 }
 
 // ListenIPC starts the Unix socket listener. Reads the path from LNND_IPC_SOCKET. Blocks indefinitely.
-func ListenIPC() error {
+func ListenIPC(s app.Services) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	// Remove any stale socket file left by a previous unclean shutdown; net.Listen would
 	// fail with "address already in use" otherwise even though nothing is listening.
@@ -45,6 +46,6 @@ func ListenIPC() error {
 			log.Printf("Error accepting IPC connection: %v", err)
 			continue
 		}
-		go HandleConnUNIX(conn)
+		go HandleConnUNIX(conn, s)
 	}
 }

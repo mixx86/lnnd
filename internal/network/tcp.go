@@ -7,8 +7,7 @@ import (
 	"net"
 	"os"
 
-	"lnn/internal/identity"
-	"lnn/internal/iocore"
+	app "lnn/internal"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
@@ -21,7 +20,7 @@ func ConnectTCP(ip string) (net.Conn, error) {
 }
 
 // ListenTCP binds to TCP_PORT and accepts incoming peer connections indefinitely.
-func ListenTCP(i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore.Manager) error {
+func ListenTCP(s app.Services) error {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -33,7 +32,7 @@ func ListenTCP(i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore
 			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
 			continue
 		}
-		go HandleConnTCP(conn, i, sm, ioc)
+		go HandleConnTCP(conn, s)
 	}
 }
 

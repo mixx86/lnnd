@@ -9,11 +9,11 @@ import (
 )
 
 // OutBoundHandshake authenticates this node to a remote peer as the initiating side.
-func OutboundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.SessionManager) error {
+func OutboundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.SessionManager) (*peer.Session, error) {
 	creds := i.Creds()
 	nonce, err := protocol.GenerateNonce()
 	if err != nil {
-		return fmt.Errorf("error generating the nonce")
+		return nil, fmt.Errorf("error generating the nonce")
 	}
 
 	err = sendRaw(conn, protocol.Frame{
@@ -23,7 +23,7 @@ func OutboundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.Sess
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error sending the HELLO message")
+		return nil, fmt.Errorf("error sending the HELLO message")
 	}
 	err = sendRaw(conn, protocol.Frame{
 		Body: protocol.Challenge{
@@ -31,38 +31,38 @@ func OutboundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.Sess
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error sending the CHALLENGE message")
+		return nil, fmt.Errorf("error sending the CHALLENGE message")
 	}
 
 	msg, err := ReceiveTCP(conn)
 	if err != nil {
-		return fmt.Errorf("error receiving the response")
+		return nil, fmt.Errorf("error receiving the response")
 	}
 	hello, ok := msg.Body.(protocol.Hello)
 	if !ok {
-		return fmt.Errorf("error converting the response")
+		return nil, fmt.Errorf("error converting the response")
 	}
 
 	msg, err = ReceiveTCP(conn)
 	if err != nil {
-		return fmt.Errorf("error receiving the CHALLENGE message")
+		return nil, fmt.Errorf("error receiving the CHALLENGE message")
 	}
 	challenge, ok := msg.Body.(protocol.Challenge)
 	if !ok {
-		return fmt.Errorf("error converting the response")
+		return nil, fmt.Errorf("error converting the response")
 	}
 
 	msg, err = ReceiveTCP(conn)
 	if err != nil {
-		return fmt.Errorf("error receiving the CHALLENGE_RESP message")
+		return nil, fmt.Errorf("error receiving the CHALLENGE_RESP message")
 	}
 	challengeResp, ok := msg.Body.(protocol.ChallengeResp)
 	if !ok {
-		return fmt.Errorf("invalid type of data: %v", err)
+		return nil, fmt.Errorf("invalid type of data: %v", err)
 	}
 	ok = protocol.VerifyKey(hello.PublicKey, nonce, challengeResp.Signature)
 	if !ok {
-		return fmt.Errorf("error verifying the key")
+		return nil, fmt.Errorf("error verifying the key")
 	}
 
 	// Verify the peer's signature before sending ours — never sign for an unauthenticated peer.
@@ -73,13 +73,15 @@ func OutboundHandshake(conn net.Conn, i *identity.IdentityService, sm *peer.Sess
 		},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	session := peer.NewSession(hello.ID, hello.PublicKey, conn)
+
 	sm.Register(
-		peer.NewSession(hello.ID, hello.PublicKey, conn),
+		session,
 	)
-	return nil
+	return session, nil
 }
 
 // InBoundHandshake authenticates an incoming connection as the accepting side.
@@ -150,6 +152,7 @@ func InboundHandshake(conn net.Conn, i *identity.IdentityService, pm *peer.Sessi
 		return nil, fmt.Errorf("error verifying the key")
 	}
 
+	// TODO: Verify if there's already a session with the same id/key
 	session := peer.NewSession(hello.ID, hello.PublicKey, conn)
 
 	pm.Register(session)

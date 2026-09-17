@@ -17,19 +17,19 @@ import (
 )
 
 // NewService creates a new IdentityService by loading or generating local credentials.
-func NewService() (*IdentityService, error) {
+func NewService() (*Service, error) {
 	creds, err := LoadLocalCreds()
 
 	if err != nil {
-		return &IdentityService{}, err
+		return &Service{}, err
 	}
-	return &IdentityService{
+	return &Service{
 		creds: creds,
 	}, nil
 }
 
 // Creds returns the local node credentials.
-func (i *IdentityService) Creds() Credentials {
+func (i *Service) Creds() Credentials {
 	return i.creds
 }
 

@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"lnn/internal/identity"
+	app "lnn/internal"
 	"lnn/internal/iocore"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
@@ -13,7 +13,7 @@ import (
 )
 
 // 5-second handshake deadline: prevents a slow or malicious peer from holding the goroutine forever.
-func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionManager, ioc *iocore.Manager) {
+func HandleConnTCP(conn net.Conn, s app.Services) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
@@ -35,7 +35,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionM
 		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
 		return
 	}
-	p, err := InboundHandshake(conn, i, sm)
+	p, err := InboundHandshake(conn, s.Identity, s.Sessions)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
@@ -51,7 +51,7 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionM
 			logger.Daemon.Printf("Error receving TCP packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, p, ioc)
+		err = HandleTCPMessage(conn, msg, p, s.IO)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
 			return
@@ -62,6 +62,8 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, sm *peer.SessionM
 // HandleTCPMessage processes application-layer messages for peers in StateVerified.
 func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, ioc *iocore.Manager) error {
 	switch m := msg.Body.(type) {
+	case protocol.Ok:
+		return nil
 	case protocol.Error:
 		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
@@ -91,8 +93,19 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, ioc *i
 			}
 		}
 		go func() {
-			<-pr.Written
-			// sendTCP ok
+			err := <-pr.Written
+			if err != nil {
+				SendTCP(s, protocol.Frame{
+					Body: protocol.Error{
+						Code:    protocol.ErrInternal,
+						Message: protocol.MsgErrInternal,
+					},
+				}.WithTag(msg.Header.Tag))
+				return
+			}
+			SendTCP(s, protocol.Frame{
+				Body: protocol.Ok{},
+			}.WithTag(msg.Header.Tag))
 		}()
 		return nil
 

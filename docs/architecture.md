@@ -31,15 +31,23 @@ lnn is split into two binaries that communicate over a local Unix socket:
 ```
 cmd/lnnd/           Entry point
 internal/
+  app.go            Services interface — allows network and ipc to accept daemon.Daemon without importing daemon
   config/           Env file loader (configs/lnnd.conf)
-  daemon/           Daemon orchestrator — wires services together
+  daemon/           Daemon orchestrator — wires and starts all services
   identity/         Node identity: UUID + Ed25519 keypair (~/.lnn/)
   ipc/              Unix socket listener, JSON request parsing/routing
+  ioring/           io_uring pressure signal; future: scheduler and submission/completion machinery
   network/          TCP listener, handshake, message dispatch loop
   peer/             Thread-safe peer registry, peer state machine
   protocol/         Wire format: encoding, parsing, constants
+  reqqueue/         Inbound request queue (PendingRequest, TryEnqueue, Enqueue, backpressure)
   logger/           Colored loggers (lnnd / lnnp prefixes)
+  wal/              Write-ahead log: requests and resolutions
 ```
+
+### Import cycle resolution
+
+`network` and `ipc` both accept `daemon.Daemon` as a parameter but cannot import `daemon` directly — `daemon` already imports them for `Start()`. `internal/app.go` defines the `Services` interface that `network` and `ipc` consume; `daemon.Daemon` implements it implicitly, breaking the cycle.
 
 ### Startup sequence
 
@@ -302,6 +310,51 @@ The four combinations:
 Default behaviors follow Unix convention: symlinks do not duplicate data; hard links produce a local inode.
 
 The resolution dimension (sym vs hard) is meaningful in all four cases: a symlink always refers to the remote path, so a rename on the remote peer breaks it regardless of locality; a hard link always refers to the remote inode, so lnnd follows renames transparently regardless of locality.
+
+---
+
+## Filesystem presentation
+
+Remote links appear on the local filesystem as entries pointing into `~/.lnn/<ip>:/`. The directory `~/.lnn/<ip>:/` is a FUSE mount managed by lnnd.
+
+### Default layout
+
+```
+./link -> ~/.lnn/192.168.1.5:/path/to/file
+```
+
+### IP change handling
+
+When a peer's IP changes, lnnd renames the mount directory:
+
+```
+mv ~/.lnn/192.168.1.5:/ ~/.lnn/192.168.1.6:/
+```
+
+Instantaneous — directory rename on the same filesystem, no data moves. All existing local entries remain valid because the kernel resolves paths lazily at access time. lnnd detects IP changes via the handshake: UUID and public key are verified on every connection.
+
+### Peer naming
+
+Users can assign a friendly name to a peer:
+
+```bash
+lnn --name raspi 192.168.1.5
+```
+
+lnnd renames `~/.lnn/192.168.1.5:/` to `~/.lnn/raspi/`. The UUID remains the canonical identifier internally.
+
+### Optional drivers
+
+**UX driver** — the base installation presents links as `~/.lnn/192.168.1.5:/file`. This optional kernel module changes how entries appear to the VFS: instead of the `~/.lnn/<ip>:/` path, entries appear directly as `192.168.1.5://file` in `ls` and other standard tools. Also surfaces extra metadata (link type, peer name, sync status) natively via the VFS without any wrapper. This is the only way to achieve the `ip://path` presentation without a custom `ls`.
+
+**Performance driver** — the base installation uses io_uring + FUSE, which already eliminates most traditional FUSE overhead. This optional driver goes further by replacing FUSE with a native VFS module, enabling two optimizations that io_uring + FUSE cannot provide:
+
+- **True zero-copy**: data from the remote peer goes directly from the network socket to the kernel page cache without passing through lnnd in userspace. With FUSE, lnnd must receive the data, then pass it back to the kernel.
+- **Native page cache integration**: remote files are treated as first-class entries in the kernel page cache, enabling kernel-managed read-ahead and cache coherency. With FUSE, the kernel cannot apply these optimizations transparently.
+
+Recommended for high-throughput environments: large file transfers at wire speed or high-concurrency small file workloads. Not needed for typical personal or low-volume use.
+
+Both drivers require kernel module installation. On Secure Boot systems the signing key must be enrolled once.
 
 ---
 

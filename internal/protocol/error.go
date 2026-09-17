@@ -48,8 +48,8 @@ func ParseError(payload []byte) (Error, error) {
 	return Error{Code: code, Message: string(raw[:n])}, nil
 }
 
-func (Error) Type() uint8  { return MsgError }
-func (Error) Size() uint32 { return ErrorMessageSize }
+func (Error) Type() MsgKind { return MsgError }
+func (Error) Size() uint32  { return ErrorMessageSize }
 
 const (
 	ErrInvalidMessage  int64 = -1
@@ -58,6 +58,7 @@ const (
 	ErrOverloaded      int64 = -4
 	ErrTooManyPending  int64 = -5
 	ErrPendingTimeout  int64 = -6
+	ErrInternal        int64 = -7
 )
 
 const (
@@ -66,4 +67,5 @@ const (
 	MsgErrRequestRejected = "Request rejected."
 	MsgErrOverloaded      = "Daemon overloaded."
 	MsgErrPendingTimeout  = "Timed out waiting for a response."
+	MsgErrInternal        = "Internal error."
 )

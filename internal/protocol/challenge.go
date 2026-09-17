@@ -1,10 +1,6 @@
 // Package protocol implements the LNN wire protocol messages and encoding.
 package protocol
 
-import (
-	"encoding/binary"
-)
-
 const (
 	UUIDSize      = 16
 	PublicKeySize = 32
@@ -37,8 +33,8 @@ func ParseChallenge(payload []byte) (Challenge, error) {
 	return parsedPayload, nil
 }
 
-func (Challenge) Type() uint8  { return MsgChallenge }
-func (Challenge) Size() uint32 { return ChallengePayloadSize }
+func (Challenge) Type() MsgKind { return MsgChallenge }
+func (Challenge) Size() uint32  { return ChallengePayloadSize }
 
 // ChallengeRespPayloadSize is the size in bytes of a challenge response (Ed25519 signature).
 const ChallengeRespPayloadSize uint32 = 64
@@ -55,14 +51,9 @@ func (c ChallengeResp) Encode() []byte {
 
 // EncodeChallengeResp constructs a complete challenge response message packet.
 func EncodeChallengeResp(sig [ChallengeRespPayloadSize]byte) []byte {
-	packet := make([]byte, HeaderSize+ChallengeRespPayloadSize)
+	packet := make([]byte, ChallengeRespPayloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgChallengeResp
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ChallengeRespPayloadSize)
-
-	copy(packet[OffsetBody:], sig[:])
+	copy(packet[:], sig[:])
 
 	return packet
 }
@@ -74,5 +65,5 @@ func ParseChallengeResp(payload []byte) (ChallengeResp, error) {
 	return parsedPayload, nil
 }
 
-func (ChallengeResp) Type() uint8  { return MsgChallengeResp }
-func (ChallengeResp) Size() uint32 { return ChallengeRespPayloadSize }
+func (ChallengeResp) Type() MsgKind { return MsgChallengeResp }
+func (ChallengeResp) Size() uint32  { return ChallengeRespPayloadSize }
