@@ -9,6 +9,7 @@ import (
 	"lnn/internal/sched"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -20,6 +21,9 @@ import (
 // al arrancar validar checksum si no hay entrys delante
 // separar entry header de payload header
 
+// File header format:
+// [magic:4][lco:8]
+// lco stands for "last checkpoint offset"
 // Entry format (one per line):
 // Entry header:
 //
@@ -54,14 +58,77 @@ const (
 	OP_CHECKPOINT
 )
 
-// con app podemos sacar sched
+const (
+	F_HEADER_MAGIC     uint32 = 0x4C4E4E52 // lnnr
+	F_HEADER_MAGIC_LEN        = 4
+	F_HEADER_LCO_LEN          = 8
+	F_HEADER_TOTAL_LEN        = F_HEADER_MAGIC_LEN + F_HEADER_LCO_LEN
+)
+
 func NewRequestsWriter(dir string) *RequestsWriter {
 	return &RequestsWriter{
 		canPath: filepath.Join(dir, "requests"),
 	}
 }
 
+func (w *RequestsWriter) writeRequestsFileHeader() {}
+func (w *RequestsWriter) checkRequestsFileHeader() bool {
+	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", w.canPath, err)
+	}
+
+	header := make([]byte, F_HEADER_TOTAL_LEN)
+	_, err = f.Read(header)
+	if err != nil {
+		logger.Daemon.Fatalf("error: something went wrong while reading the requests file at: %v: %v", w.canPath, err)
+	}
+
+	magic := binary.BigEndian.Uint32(header[:F_HEADER_MAGIC_LEN])
+	if magic != F_HEADER_MAGIC {
+		return false
+	}
+
+	lco := binary.BigEndian.Uint64(header[F_HEADER_MAGIC_LEN : F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN])
+
+	info, err := f.Stat()
+	if err != nil {
+		logger.Daemon.Fatalf(
+			"error: couldn't stat requests file at %v: %v",
+			w.canPath,
+			err,
+		)
+	}
+
+	if lco < F_HEADER_TOTAL_LEN || lco >= uint64(info.Size()) {
+		return false
+	}
+
+	return true
+}
+
 func (w *RequestsWriter) Run(s *sched.Service) {
+	info, err := os.Stat(w.canPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.writeRequestsFileHeader()
+		} else {
+			logger.Daemon.Fatalf("error: %v", err)
+		}
+	}
+
+	if info.IsDir() {
+		logger.Daemon.Fatalf("error: requests shouldn't be a directory at %v", w.canPath)
+	}
+
+	if info.Size() == 0 {
+		w.writeRequestsFileHeader()
+	}
+
+	if !w.checkRequestsFileHeader() {
+		w.writeRequestsFileHeader()
+	}
+
 	for {
 		req, err := s.NextRequest()
 		if err != nil {
@@ -140,7 +207,7 @@ func notifyWriteResult(batch []queues.PendingRequest, err error) {
 }
 
 func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
-	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
