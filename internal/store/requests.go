@@ -71,12 +71,37 @@ func NewRequestsWriter(dir string) *RequestsWriter {
 	}
 }
 
-func (w *RequestsWriter) writeRequestsFileHeader() {}
+// writeRequestsFileHeader assumes the file is empty; thus, it creates a first
+// checkpointwhich, which is not part of the file header.
+func (w *RequestsWriter) writeRequestsFileHeader() {
+	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", w.canPath, err)
+	}
+	defer f.Close()
+
+	var header [F_HEADER_TOTAL_LEN]byte
+	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
+	binary.BigEndian.PutUint64(header[F_HEADER_MAGIC_LEN:F_HEADER_TOTAL_LEN], F_HEADER_TOTAL_LEN)
+
+	var checkpoint [9]byte
+	binary.BigEndian.PutUint32(checkpoint[:4], 4)
+	binary.BigEndian.PutUint32(checkpoint[4:5], 3)
+	// TODO: Add checksum
+	//	binary.BigEndian.PutUint32(checkpoint[5:9], )
+	//
+
+	if _, err := f.Write(header[:]); err != nil {
+		logger.Daemon.Fatalf("error writing header: %v", err)
+	}
+
+}
 func (w *RequestsWriter) checkRequestsFileHeader() bool {
 	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", w.canPath, err)
 	}
+	defer f.Close()
 
 	header := make([]byte, F_HEADER_TOTAL_LEN)
 	_, err = f.Read(header)
