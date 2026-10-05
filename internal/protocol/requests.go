@@ -37,7 +37,6 @@ func EncodeSymLinkRequest(src string, dst string) []byte {
 	return packet
 }
 
-// Encode serializes the symlink request into wire format.
 func (r SymLinkRequest) Encode() []byte {
 	return EncodeSymLinkRequest(r.Src, r.Dst)
 }
@@ -56,7 +55,6 @@ func (r SymLinkRequest) Size() uint32 {
 	return payloadSize
 }
 
-// ParseSymLinkRequest decodes a symlink request from its binary wire format.
 func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 	lenSrc := binary.BigEndian.Uint16(payload[:2])
 

@@ -10,15 +10,16 @@ import (
 type MsgKind uint8
 
 const (
-	MsgHello           MsgKind = iota // Initial peer identification
-	MsgChallenge                      // Authentication challenge
-	MsgChallengeResp                  // Challenge response with signature
-	MsgError                          // Error notification
-	MsgLinkSym                        // Symbolic link operation
-	MsgLinkHard                       // Hard link operation
-	MsgSymLinkRequest                 // Request to create symbolic link
-	MsgHardLinkRequest                // Request to create hard link
-	MsgOk                             // Success acknowledgment
+	MsgHello MsgKind = iota
+	MsgChallenge
+	MsgChallengeResp
+	MsgError
+	MsgLinkSym
+	MsgLinkHard
+	MsgSymLinkRequest
+	MsgHardLinkRequest
+	MsgOk
+	MsgRecoverRequest
 )
 
 type Frame struct {
@@ -47,21 +48,17 @@ func (h Header) Encode(msgType MsgKind, payloadLen uint32) []byte {
 	return buf
 }
 
-// Message is the interface for all protocol messages.
 type Payload interface {
 	Encode() []byte
 	Type() MsgKind
 	Size() uint32
 }
 
-// InboundRequest marks inbound messages handled as requests.
 type InboundRequest interface {
 	Payload
 	inboundRequest()
 }
 
-// OkMessage is a zero-payload acknowledgment sent after a message
-// has been successfully handled.
 type Ok struct{}
 
 func (Ok) Encode() []byte {
@@ -77,7 +74,6 @@ func (Ok) Size() uint32 {
 	return 0
 }
 
-// Header represents the fixed-size protocol header. See architecture.md for the full layout.
 type Header struct {
 	Magic         [4]byte
 	Version       uint8
@@ -106,7 +102,6 @@ var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
 const protocolVersion uint8 = 0x01
 
-// ReadHeader reads and validates the protocol header from r.
 func ReadHeader(r io.Reader) (Header, error) {
 	var header Header
 	headerBuf := make([]byte, HeaderSize)

@@ -61,7 +61,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				}
 				return
 			}
-			session, err := network.OutboundHandshake(conn, s.Identity, s.Sessions)
+			session, err := network.OutboundHandshake(conn, s.Identity, s.Session)
 			if err != nil {
 				bytes, err := Response{
 					Ok:  false,

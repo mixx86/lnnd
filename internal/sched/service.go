@@ -2,9 +2,12 @@ package sched
 
 import (
 	"errors"
+	"lnn/internal/peer"
+	"lnn/internal/protocol"
 	"lnn/internal/queues"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 func NewService() *Service {
@@ -86,11 +89,27 @@ func (s *Service) IsBackPressured(source BPSourceID) bool {
 	return false
 }
 
-func SubmitRequest() error {
-	return nil
-}
+const requestEnqueueTimeout = 100 * time.Millisecond
 
-func SubmitLinkedFile() error {
+func (s *Service) SubmitRequest(
+	from *peer.RemoteNode,
+	req protocol.InboundRequest,
+) error {
+	q, ok := s.queues[queues.RequestsQueueID].(*queues.RequestsQueue)
+	if !ok {
+		return errors.New("error asserting the requests queue")
+	}
+
+	s.WaitForPressureRelease(BPRequestsID)
+
+	if _, ok := q.TryEnqueueWithTimeout(
+		from,
+		req,
+		requestEnqueueTimeout,
+	); !ok {
+		return ErrRequestsQueueFull
+	}
+
 	return nil
 }
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"lnn/internal/peer"
+	"lnn/internal/sched"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,7 @@ type RequestsCache struct {
 
 	entries map[uint32]uint16
 
-	pending int
+	pending    int
 	flushEvery int
 }
 
@@ -26,14 +27,18 @@ type RecoveryEntry struct {
 
 type RequestsWriter struct {
 	canPath string
-	sm 			  			*peer.SessionManager
-	mu              sync.Mutex
+	sm      *peer.SessionManager
+	mu      sync.Mutex
 
-	reqID atomic.Uint32
+	reqID    atomic.Uint32
 	reqCache *RequestsCache
 	recovery []RecoveryEntry
 }
 
 type Writers struct {
 	RequestsWriter
+}
+
+func (w *Writers) Run(schedService *sched.Service) {
+	w.RequestsWriter.Run(schedService)
 }

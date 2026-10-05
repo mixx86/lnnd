@@ -7,20 +7,19 @@ import (
 	"net"
 	"os"
 
-	app "lnn/internal"
+	"lnn/internal/identity"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
+	"lnn/internal/sched"
 )
 
-// ConnectTCP establishes a TCP connection to the given IP address.
 func ConnectTCP(ip string) (net.Conn, error) {
 	port := os.Getenv("TCP_PORT")
 	return net.Dial("tcp", ip+":"+port)
 }
 
-// ListenTCP binds to TCP_PORT and accepts incoming peer connections indefinitely.
-func ListenTCP(s app.Services) error {
+func ListenTCP(sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) error {
 	port := os.Getenv("TCP_PORT")
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -32,11 +31,10 @@ func ListenTCP(s app.Services) error {
 			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
 			continue
 		}
-		go HandleConnTCP(conn, s)
+		go HandleConnTCP(conn, sm, schedService, idService)
 	}
 }
 
-// SendTCP encodes and sends a protocol message to a peer.
 func SendTCP(s *peer.Session, data protocol.Frame) error {
 	packet := data.Encode()
 
@@ -56,7 +54,6 @@ func sendRaw(conn net.Conn, data protocol.Frame) error {
 	return err
 }
 
-// ReceiveTCP reads a complete protocol message from conn and returns it as the appropriate concrete type.
 func ReceiveTCP(conn net.Conn) (protocol.Frame, error) {
 	header, err := protocol.ReadHeader(conn)
 	if err != nil {

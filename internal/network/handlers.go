@@ -1,19 +1,20 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
 
-	app "lnn/internal"
-	"lnn/internal/iocore"
+	"lnn/internal/identity"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
+	"lnn/internal/sched"
 )
 
 // 5-second handshake deadline: prevents a slow or malicious peer from holding the goroutine forever.
-func HandleConnTCP(conn net.Conn, s app.Services) {
+func HandleConnTCP(conn net.Conn, sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
@@ -35,7 +36,7 @@ func HandleConnTCP(conn net.Conn, s app.Services) {
 		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
 		return
 	}
-	p, err := InboundHandshake(conn, s.Identity, s.Sessions)
+	p, err := InboundHandshake(conn, idService, sm)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
@@ -51,7 +52,7 @@ func HandleConnTCP(conn net.Conn, s app.Services) {
 			logger.Daemon.Printf("Error receving TCP packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, p, s.IO)
+		err = HandleTCPMessage(conn, msg, p, schedService)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
 			return
@@ -59,8 +60,7 @@ func HandleConnTCP(conn net.Conn, s app.Services) {
 	}
 }
 
-// HandleTCPMessage processes application-layer messages for peers in StateVerified.
-func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, ioc *iocore.Manager) error {
+func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sched.Service) error {
 	switch m := msg.Body.(type) {
 	case protocol.Ok:
 		return nil
@@ -68,40 +68,28 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, ioc *i
 		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
 	case protocol.SymLinkRequest:
-		pr, ok := ioc.TryEnqueue(s.Remote, m)
+		ibrequest, ok := msg.Body.(protocol.InboundRequest)
 		if !ok {
-			if ioc.Pressure() == 0 {
-				// WAL is the bottleneck — genuine overload, fail immediately.
-				SendTCP(s, protocol.Frame{
-					Body: protocol.Error{
-						Code:    protocol.ErrOverloaded,
-						Message: protocol.MsgErrOverloaded,
-					},
-				}.WithTag(msg.Header.Tag))
-				return fmt.Errorf("WAL overloaded, rejected request from peer %v", s.Remote.ID)
-			}
-
-			pr, ok = ioc.Enqueue(s.Remote, m, 5*time.Second)
-			if !ok {
-				SendTCP(s, protocol.Frame{
-					Body: protocol.Error{
-						Code:    protocol.ErrOverloaded,
-						Message: protocol.MsgErrOverloaded,
-					},
-				}.WithTag(msg.Header.Tag))
-				return fmt.Errorf("backpressure timeout, rejected request from peer %v", s.Remote.ID)
-			}
+			fmt.Errorf("error parsing the inbound request.\n")
 		}
 		go func() {
-			err := <-pr.Written
+			err := sc.SubmitRequest(s.Remote, ibrequest)
+
 			if err != nil {
+				if errors.Is(err, sched.ErrRequestsQueueFull) {
+					SendTCP(s, protocol.Frame{
+						Body: protocol.Error{
+							Code:    protocol.ErrOverloaded,
+							Message: protocol.MsgErrOverloaded,
+						},
+					}.WithTag(msg.Header.Tag))
+				}
 				SendTCP(s, protocol.Frame{
 					Body: protocol.Error{
 						Code:    protocol.ErrInternal,
 						Message: protocol.MsgErrInternal,
 					},
 				}.WithTag(msg.Header.Tag))
-				return
 			}
 			SendTCP(s, protocol.Frame{
 				Body: protocol.Ok{},
