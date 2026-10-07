@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/binary"
 	"lnn/internal/logger"
 
 	"lnn/internal/peer"
@@ -8,7 +9,6 @@ import (
 	"lnn/internal/queues"
 	"lnn/internal/sched"
 
-	"os"
 	"path/filepath"
 )
 
@@ -58,7 +58,7 @@ const (
 	REQUEST_REQ_ID_LEN    = 4
 	REQUEST_UNIX_TS_LEN   = 8
 
-	REQUEST_STATIC_FIELDS_LEN = REQUEST_REQ_TYPE_LEN + REQUEST_PEER_UUID_LEN + REQUEST_REQ_ID_OFFSET + REQUEST_UNIX_TS_LEN
+	REQUEST_STATIC_FIELDS_LEN = REQUEST_REQ_TYPE_LEN + REQUEST_PEER_UUID_LEN + REQUEST_REQ_ID_LEN + REQUEST_UNIX_TS_LEN
 
 	REQUEST_PEER_UUID_OFFSET = ENTRY_HEADER_LEN + REQUEST_REQ_TYPE_LEN
 	REQUEST_REQ_ID_OFFSET    = REQUEST_PEER_UUID_OFFSET + REQUEST_PEER_UUID_LEN
@@ -77,48 +77,36 @@ func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
 	if err != nil {
 		logger.Daemon.Fatalf("error opening requests cache: %v", err)
 	}
-	return &RequestsWriter{
-		canPath:  filepath.Join(dir, "requests"),
-		sm:       sm,
+
+	reqFile, err := OpenRequestsFile(filepath.Join(dir, "requests"))
+	if err != nil {
+		logger.Daemon.Fatalf("error opening the requests file: %v", err)
+	}
+
+	return &RequestsWriter {
+		sm: sm,
+		reqFile: reqFile,
 		reqCache: reqCache,
 	}
 }
 
 func (w *RequestsWriter) Run(s *sched.Service) {
-	info, err := os.Stat(w.canPath)
+	srcReqID, err := w.reqFile.getReqID()
 	if err != nil {
-		if os.IsNotExist(err) {
-			w.writeRequestsFileHeader()
-		} else {
-			logger.Daemon.Fatalf("error: %v", err)
-		}
+		logger.Daemon.Fatalf("error: %v", err)
 	}
+	reqID.Store(srcReqID)
 
-	if info.IsDir() {
-		logger.Daemon.Fatalf("error: requests shouldn't be a directory at %v", w.canPath)
-	}
-
-	if info.Size() == 0 {
-		w.writeRequestsFileHeader()
-	}
-
-	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", w.canPath, err)
-	}
-	defer f.Close()
-
-	if !w.checkRequestsFileHeader(f) {
-		w.writeRequestsFileHeader()
-	}
-
-	if err, recoverable := w.checkEntries(f, info); err != nil {
+	if err, recoverable := w.reqFile.checkEntries(); err != nil {
 		if recoverable {
-			if err = w.recoverEntries(f); err != nil {
+			if err = w.recoverEntries(); err != nil {
 				logger.Daemon.Printf("couldn't recover requests: %v", err)
 			}
 		} else {
-			w.removeTail(f, info)
+			err := w.reqFile.removeTail()
+			if err != nil {
+				logger.Daemon.Fatalf("error: %v", err)
+			}
 		}
 	}
 
@@ -145,7 +133,26 @@ func (w *RequestsWriter) Run(s *sched.Service) {
 	}
 }
 
-func (w *RequestsWriter) nextReqID() uint32 {
-	return w.reqID.Add(1) - 1
+func (r *RequestsFile) getReqID() (uint32, error) {
+	var buf [F_HEADER_REQ_ID_LEN]byte
+
+	if _, err := r.file.ReadAt(buf[:], F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN); err != nil {
+		logger.Daemon.Printf("error: reading current_req_id: %v", err)
+		return 0, err
+	}
+
+	return binary.BigEndian.Uint32(buf[:]), nil
 }
 
+func (r *RequestsFile) nextReqID() uint32 {
+	id := reqID.Add(1)
+
+	var buf [F_HEADER_REQ_ID_LEN]byte
+	binary.BigEndian.PutUint32(buf[:], id)
+
+	if _, err := r.file.WriteAt(buf[:], F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN); err != nil {
+		logger.Daemon.Printf("error: writing current_req_id: %v", err)
+	}
+
+	return id
+}

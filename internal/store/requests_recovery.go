@@ -8,8 +8,8 @@ import (
 	"os"
 )
 
-func (w *RequestsWriter) recoverEntries(f *os.File) error {
-	for _, entry := range w.recovery {
+func (w *RequestsWriter) recoverEntries() error {
+	for _, entry := range w.reqFile.recovery {
 		tag, ok := w.reqCache.GetTag(entry.ReqID)
 		if !ok {
 			continue

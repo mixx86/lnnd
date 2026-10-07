@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"lnn/internal/logger"
 	"os"
+
+	"github.com/google/uuid"
 )
 
-func (w *RequestsWriter) checkRequestsFileHeader(f *os.File) bool {
+func (r *RequestsFile) checkRequestsFileHeader(f *os.File) bool {
 	header := make([]byte, F_HEADER_TOTAL_LEN)
-	_, err := f.Read(header)
-	if err != nil {
-		logger.Daemon.Fatalf("error: something went wrong while reading the requests file at: %v: %v", w.canPath, err)
+	if _, err := f.ReadAt(header, 0); err != nil {
+		return false
 	}
 
 	magic := binary.BigEndian.Uint32(header[:F_HEADER_MAGIC_LEN])
@@ -25,7 +26,7 @@ func (w *RequestsWriter) checkRequestsFileHeader(f *os.File) bool {
 	if err != nil {
 		logger.Daemon.Fatalf(
 			"error: couldn't stat requests file at %v: %v",
-			w.canPath,
+			r.path,
 			err,
 		)
 	}
@@ -37,8 +38,12 @@ func (w *RequestsWriter) checkRequestsFileHeader(f *os.File) bool {
 	return true
 }
 
-func (w *RequestsWriter) checkEntries(f *os.File, info os.FileInfo) (error, bool) {
-	lco, err := w.getLco(f)
+func (r *RequestsFile) checkEntries() (error, bool) {
+	info, err := r.file.Stat()
+	if err != nil {
+		return err, false
+	}
+	lco, err := r.getLco()
 	if err != nil {
 		return err, false
 	}
@@ -53,12 +58,12 @@ func (w *RequestsWriter) checkEntries(f *os.File, info os.FileInfo) (error, bool
 	// There are entries after the last checkpoint. Validate only the
 	// uncheckpointed tail using entry_length.
 	if checkpointEnd < fileSize {
-		return w.checkTailEntries(f, checkpointEnd, fileSize)
+		return r.checkTailEntries(checkpointEnd, fileSize)
 	}
 
 	// The last entry is the last checkpoint. Find the previous
 	// checkpoint so we can validate only the region it closes.
-	previousCheckpoint, err := w.findPreviousCheckpoint(f, lco)
+	previousCheckpoint, err := r.findPreviousCheckpoint(lco)
 	if err != nil {
 		return err, false
 	}
@@ -68,14 +73,14 @@ func (w *RequestsWriter) checkEntries(f *os.File, info os.FileInfo) (error, bool
 	var recoverable bool
 
 	for offset < int64(lco) {
-		entry, entryLength, op, err := readEntry(f, offset, lco)
+		entry, entryLength, op, err := r.readEntry(offset, lco)
 		if err != nil {
 			return err, recoverable
 		}
 
 		if op == OP_REQUEST &&
 			entryLength >= uint32(REQUEST_RECOVERY_MIN_LEN) {
-			w.recovery = append(w.recovery, RecoveryEntry{
+			r.recovery = append(r.recovery, RecoveryEntry{
 				Offset: offset,
 				PeerUUID: uuid.UUID(
 					entry[REQUEST_PEER_UUID_OFFSET : REQUEST_PEER_UUID_OFFSET+REQUEST_PEER_UUID_LEN],
@@ -100,7 +105,7 @@ func (w *RequestsWriter) checkEntries(f *os.File, info os.FileInfo) (error, bool
 
 	var checksumBuf [CHECKPOINT_CSUM_LEN]byte
 
-	if _, err := f.ReadAt(
+	if _, err := r.file.ReadAt(
 		checksumBuf[:],
 		int64(lco)+int64(ENTRY_HEADER_LEN),
 	); err != nil {
@@ -121,15 +126,14 @@ func (w *RequestsWriter) checkEntries(f *os.File, info os.FileInfo) (error, bool
 	return nil, false
 }
 
-func (w *RequestsWriter) checkTailEntries(
-	f *os.File,
+func (r *RequestsFile) checkTailEntries(
 	start int64,
 	fileSize int64,
 ) (error, bool) {
 	offset := start
 
 	for offset < fileSize {
-		entry, entryLength, op, err := readEntry(f, offset, fileSize)
+		entry, entryLength, op, err := r.readEntry(offset, fileSize)
 		if err != nil {
 			// The entry is truncated/corrupt. Check whether enough of the
 			// request survived to recover peer_uuid + req_id.
@@ -139,7 +143,7 @@ func (w *RequestsWriter) checkTailEntries(
 			if remaining >= minRequestLen {
 				var opBuf [OP_KIND_LEN]byte
 
-				if _, readErr := f.ReadAt(
+				if _, readErr := r.file.ReadAt(
 					opBuf[:],
 					offset+int64(ENTRY_LENGTH_LEN),
 				); readErr != nil {
@@ -177,15 +181,14 @@ func (w *RequestsWriter) checkTailEntries(
 	return nil, false
 }
 
-func (w *RequestsWriter) findPreviousCheckpoint(
-	f *os.File,
+func (r *RequestsFile) findPreviousCheckpoint(
 	lco int64,
 ) (int64, error) {
 	offset := int64(F_HEADER_TOTAL_LEN)
 	previousCheckpoint := int64(-1)
 
 	for offset < lco {
-		_, entryLength, op, err := readEntry(f, offset, lco)
+		_, entryLength, op, err := r.readEntry(offset, lco)
 		if err != nil {
 			return 0, err
 		}
@@ -233,8 +236,7 @@ func (w *RequestsWriter) findPreviousCheckpoint(
 	return previousCheckpoint, nil
 }
 
-func readEntry(
-	f *os.File,
+func (r *RequestsFile) readEntry(
 	offset int64,
 	limit int64,
 ) ([]byte, uint32, OP_KIND, error) {
@@ -254,7 +256,7 @@ func readEntry(
 	}
 
 	var lengthBuf [ENTRY_LENGTH_LEN]byte
-	if _, err := f.ReadAt(lengthBuf[:], offset); err != nil {
+	if _, err := r.file.ReadAt(lengthBuf[:], offset); err != nil {
 		return nil, 0, 0, fmt.Errorf(
 			"reading entry length at offset %d: %w",
 			offset,
@@ -285,7 +287,7 @@ func readEntry(
 	}
 
 	entry := make([]byte, entryLength)
-	if _, err := f.ReadAt(entry, offset); err != nil {
+	if _, err := r.file.ReadAt(entry, offset); err != nil {
 		return nil, entryLength, 0, fmt.Errorf(
 			"reading entry at offset %d: %w",
 			offset,

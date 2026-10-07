@@ -119,3 +119,27 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 }
 
 func (SymLinkRequest) inboundRequest() {}
+
+
+type Resolution struct {
+	ReqID uint32
+	Accepted bool
+	Tag uint16
+}
+
+func (r Resolution) Encode() []byte {
+	buf := make([]byte, 7)
+	binary.BigEndian.PutUint32(buf[:], r.ReqID)
+	if r.Accepted {
+   	 buf[4] = 1
+	} else {
+   	 buf[4] = 0
+	}
+	binary.BigEndian.PutUint16(buf[:], r.Tag)
+	return buf
+}
+
+func (Resolution) Type() MsgKind { return MsgResolution }
+func (Resolution) Size() uint32 { return 5 }
+
+func (Resolution) inboundRequest() {}

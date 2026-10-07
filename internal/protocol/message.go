@@ -21,6 +21,7 @@ const (
 	MsgHardLinkRequest
 	MsgOk
 	MsgRecoverRequest
+	MsgResolution
 )
 
 type Frame struct {

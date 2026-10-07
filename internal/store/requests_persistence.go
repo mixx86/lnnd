@@ -3,25 +3,48 @@ package store
 import (
 	"bufio"
 	"encoding/binary"
+
 	"fmt"
 	"io"
-	"lnn/internal/logger"
+	"lnn/internal/protocol"
 	"lnn/internal/queues"
 	"lnn/internal/sched"
 	"os"
-	"time"
 )
 
-func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
-	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
+func (r *RequestsFile) writeEntry(bw *bufio.Writer, op OP_KIND, fields []byte) error {
+	entryLength := uint32(ENTRY_HEADER_LEN + len(fields))
+	header := encodeEntryHeader(op, entryLength)
+
+	if _, err := bw.Write(header[:]); err != nil {
 		return err
 	}
-	defer f.Close()
+	if _, err := bw.Write(fields); err != nil {
+		return err
+	}
 
-	bw := bufio.NewWriter(f)
+	return nil
+}
 
-	if err := w.writeBatch(f, bw, batch, OP_REQUEST); err != nil {
+func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
+	// Cache before WAL: a tag without resolution is harmless,
+	// a resolution without tag breaks recovery.
+	for _, pr := range batch {
+		if res, ok := pr.Req.(protocol.Resolution); ok {
+			if err := w.reqCache.Put(res.ReqID, res.Tag); err != nil {
+				notifyWriteResult(batch, err)
+				return err
+			}
+		}
+	}
+
+	f := w.reqFile.file
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return err
+	}
+	bw := bufio.NewWriter(w.reqFile.file)
+
+	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, OP_REQUEST); err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
@@ -40,40 +63,45 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 
 		batch = append(batch, req)
 
-		if err := w.writeBatch(f, bw, []queues.PendingRequest{req}, OP_REQUEST); err != nil {
+		if err := w.reqFile.writeBatch(w.reqFile.file, bw, []queues.PendingRequest{req}, OP_REQUEST); err != nil {
 			notifyWriteResult(batch, err)
 			return err
 		}
-	}
-
-	if err = bw.Flush(); err != nil {
-		notifyWriteResult(batch, err)
-		return err
-	}
-	if err = f.Sync(); err != nil {
-		notifyWriteResult(batch, err)
-		return err
-	}
-
-	lco, err := w.checkpoint(f, bw);
-	if err != nil {
-		notifyWriteResult(batch, err)
-		return err
-	}
-
-	if err := w.setLco(f, lco); err != nil {
-		notifyWriteResult(batch, err)
-		return err
 	}
 
 	if err := bw.Flush(); err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
-	if err := f.Sync(); err != nil {
+
+	if err := w.reqFile.file.Sync(); err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
+
+  lco, err := w.reqFile.checkpoint(w.reqFile.file, bw)
+  if err != nil {
+  	notifyWriteResult(batch, err)
+  	return err
+  }
+
+  if err := bw.Flush(); err != nil {
+  	notifyWriteResult(batch, err)
+  	return err
+  }
+  if err := w.reqFile.file.Sync(); err != nil {
+  	notifyWriteResult(batch, err)
+  	return err
+  }
+
+  if err := w.reqFile.setLco(lco); err != nil {
+  	notifyWriteResult(batch, err)
+  	return err
+  }
+  if err := w.reqFile.file.Sync(); err != nil {
+  	notifyWriteResult(batch, err)
+  	return err
+  }
 
 	notifyWriteResult(batch, nil)
 	return nil
@@ -81,7 +109,7 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 
 // WARNING: writeBatch does ONLY write in the buffer, make sure to call bw.Flush and f.Sync
 // once you're done writing unless you don't actually want to save the content.
-func (w *RequestsWriter) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.PendingRequest, op OP_KIND) error {
+func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.PendingRequest, op OP_KIND) error {
 	for _, pr := range batch {
 		var fields []byte
 
@@ -99,118 +127,24 @@ func (w *RequestsWriter) writeBatch(f *os.File, bw *bufio.Writer, batch []queues
 			copy(req[offset:offset+REQUEST_PEER_UUID_LEN], pr.From.ID[:])
 			offset += REQUEST_PEER_UUID_LEN
 
-			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], w.nextReqID())
+			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], r.nextReqID())
 			offset += REQUEST_REQ_ID_LEN
 
-			binary.BigEndian.PutUint64(req[offset:offset+REQUEST_UNIX_TS_LEN], uint64(time.Now().Unix()))
+			binary.BigEndian.PutUint64(req[offset:offset+REQUEST_UNIX_TS_LEN], pr.EnqueuedAt)
 			offset += REQUEST_UNIX_TS_LEN
 
 			copy(req[offset:], reqPaths)
 
 			fields = req
 
-		case OP_CHECKPOINT:
-			const maxRetries = 5
-
-			var info os.FileInfo
-			var err error
-
-			for attempt := 1; attempt <= maxRetries; attempt++ {
-				info, err = f.Stat()
-				if err == nil {
-					break
-				}
-
-				logger.Daemon.Printf(
-					"stat failed (attempt %d/%d): %v",
-					attempt,
-					maxRetries,
-					err,
-				)
-
-				time.Sleep(time.Second)
-			}
-
-			if err != nil {
-				logger.Daemon.Printf("could not stat file after %d attempts: %v", maxRetries, err)
-				return err
-			}
-
-			lco, err := w.getLco(f)
-			if err != nil {
-				logger.Daemon.Fatalf("error: %v", err)
-			}
-
-			checkpointEnd := lco + CHECKPOINT_LEN
-
-			switch {
-			case checkpointEnd == info.Size():
-				return fmt.Errorf("cannot put a new checkpoint without new entries")
-			case checkpointEnd > info.Size():
-				return fmt.Errorf("invalid last checkpoint offset")
-			}
-
-			if _, err := f.Seek(int64(checkpointEnd), io.SeekStart); err != nil {
-				return err
-			}
-
-			var checksum uint32
-			var entryLengthBuf [ENTRY_LENGTH_LEN]byte
-
-			for {
-				entryOffset, err := f.Seek(0, io.SeekCurrent)
-				if err != nil {
-					return err
-				}
-
-				if entryOffset >= info.Size() {
-					break
-				}
-
-				if int64(ENTRY_LENGTH_LEN) > info.Size()-entryOffset {
-					return fmt.Errorf("truncated entry length at offset %d", entryOffset)
-				}
-
-				if _, err := io.ReadFull(f, entryLengthBuf[:]); err != nil {
-					return fmt.Errorf("reading entry length at offset %d: %w", entryOffset, err)
-				}
-
-				entryLength := binary.BigEndian.Uint32(entryLengthBuf[:])
-
-				if entryLength < uint32(ENTRY_HEADER_LEN) {
-					return fmt.Errorf(
-						"invalid entry length %d at offset %d",
-						entryLength,
-						entryOffset,
-					)
-				}
-
-				remaining := info.Size() - entryOffset
-
-				if uint64(entryLength) > uint64(remaining) {
-					return fmt.Errorf(
-						"truncated entry at offset %d: length=%d, remaining=%d",
-						entryOffset,
-						entryLength,
-						remaining,
-					)
-				}
-
-				entry := make([]byte, entryLength)
-				copy(entry[:ENTRY_LENGTH_LEN], entryLengthBuf[:])
-
-				if _, err := io.ReadFull(f, entry[ENTRY_LENGTH_LEN:]); err != nil {
-					return fmt.Errorf("reading entry at offset %d: %w", entryOffset, err)
-				}
-
-				checksum += calculateCheckSum(entry)
-			}
-
-			fields = make([]byte, CHECKPOINT_CSUM_LEN)
-			binary.BigEndian.PutUint32(fields, checksum)
-
 		case OP_ACCEPTED, OP_REJECTED:
-			fields = nil
+			if res, ok := pr.Req.(protocol.Resolution); ok {
+				fieldsBuf := make([]byte, REQUEST_REQ_ID_LEN)
+				binary.BigEndian.PutUint32(fieldsBuf, res.ReqID)
+				fields = fieldsBuf
+			} else {
+				return fmt.Errorf("invalid resolution request")
+			}
 
 		default:
 			return fmt.Errorf("unknown operation kind: %d", op)
@@ -230,20 +164,93 @@ func (w *RequestsWriter) writeBatch(f *os.File, bw *bufio.Writer, batch []queues
 	return nil
 }
 
-func (w *RequestsWriter) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) {
-	info, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
+  func (r *RequestsFile) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) {
+  	info, err := f.Stat()
+  	if err != nil {
+  		return 0, err
+  	}
 
-	lco := uint64(info.Size())
+  	lco := uint64(info.Size())
 
-	if err := w.writeBatch(f, bw, nil, OP_CHECKPOINT); err != nil {
-		return 0, err
-	}
+  	prevLco, err := r.getLco()
+  	if err != nil {
+  		return 0, err
+  	}
 
-	return lco, nil
-}
+  	checkpointEnd := prevLco + CHECKPOINT_LEN
+
+  	switch {
+  	case checkpointEnd == info.Size():
+  		return 0, fmt.Errorf("cannot put a new checkpoint without new entries")
+  	case checkpointEnd > info.Size():
+  		return 0, fmt.Errorf("invalid last checkpoint offset")
+  	}
+
+  	sr := io.NewSectionReader(f, checkpointEnd, info.Size()-checkpointEnd)
+
+  	var checksum uint32
+  	var entryLengthBuf [ENTRY_LENGTH_LEN]byte
+  	var entryOffset int64
+
+  	for entryOffset < sr.Size() {
+  		if int64(ENTRY_LENGTH_LEN) > sr.Size()-entryOffset {
+  			return 0, fmt.Errorf(
+  				"truncated entry length at offset %d",
+  				checkpointEnd+entryOffset,
+  			)
+  		}
+
+  		if _, err := io.ReadFull(sr, entryLengthBuf[:]); err != nil {
+  			return 0, fmt.Errorf(
+  				"reading entry length at offset %d: %w",
+  				checkpointEnd+entryOffset,
+  				err,
+  			)
+  		}
+
+  		entryLength := binary.BigEndian.Uint32(entryLengthBuf[:])
+
+  		if entryLength < uint32(ENTRY_HEADER_LEN) {
+  			return 0, fmt.Errorf(
+  				"invalid entry length %d at offset %d",
+  				entryLength,
+  				checkpointEnd+entryOffset,
+  			)
+  		}
+
+  		if uint64(entryLength) > uint64(sr.Size()-entryOffset) {
+  			return 0, fmt.Errorf(
+  				"truncated entry at offset %d: length=%d, remaining=%d",
+  				checkpointEnd+entryOffset,
+  				entryLength,
+  				sr.Size()-entryOffset,
+  			)
+  		}
+
+  		entry := make([]byte, entryLength)
+  		copy(entry[:ENTRY_LENGTH_LEN], entryLengthBuf[:])
+
+  		if _, err := io.ReadFull(sr, entry[ENTRY_LENGTH_LEN:]); err != nil {
+  			return 0, fmt.Errorf(
+  				"reading entry at offset %d: %w",
+  				checkpointEnd+entryOffset,
+  				err,
+  			)
+  		}
+
+  		checksum += calculateCheckSum(entry)
+  		entryOffset += int64(entryLength)
+  	}
+
+  	var fields [CHECKPOINT_CSUM_LEN]byte
+  	binary.BigEndian.PutUint32(fields[:], checksum)
+
+  	if err := r.writeEntry(bw, OP_CHECKPOINT, fields[:]); err != nil {
+  		return 0, err
+  	}
+
+  	return lco, nil
+  }
 
 func notifyWriteResult(batch []queues.PendingRequest, err error) {
 	for _, pr := range batch {

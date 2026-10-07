@@ -19,20 +19,26 @@ type RequestsCache struct {
 	flushEvery int
 }
 
+type RequestsFile struct {
+	path string
+    file *os.File
+    mu   sync.Mutex
+	recovery []RecoveryEntry
+}
+
 type RecoveryEntry struct {
 	Offset   int64
 	PeerUUID [16]byte
 	ReqID    uint32
 }
 
-type RequestsWriter struct {
-	canPath string
-	sm      *peer.SessionManager
-	mu      sync.Mutex
+var reqID atomic.Uint32
 
-	reqID    atomic.Uint32
+type RequestsWriter struct {
+	sm      *peer.SessionManager
+
+	reqFile  *RequestsFile
 	reqCache *RequestsCache
-	recovery []RecoveryEntry
 }
 
 type Writers struct {

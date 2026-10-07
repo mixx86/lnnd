@@ -5,10 +5,10 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
-// DataDir returns the base directory where lnn stores all persistent data.
 func DataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -17,9 +17,6 @@ func DataDir() (string, error) {
 	return filepath.Join(home, ".lnn"), nil
 }
 
-// LoadEnv reads KEY=VALUE pairs from path and sets them as environment variables.
-// Lines without '=' are silently skipped. Returns an error if the file cannot
-// be opened or if any variable cannot be set.
 func LoadEnv(path string) (retErr error) {
 	envFile, err := os.Open(path)
 	if err != nil {
@@ -41,4 +38,39 @@ func LoadEnv(path string) (retErr error) {
 		}
 	}
 	return nil
+}
+
+func parseBytes(s string) (uint64, bool) {
+	mult := uint64(1)
+	switch {
+	case strings.HasSuffix(s, "KB"), strings.HasSuffix(s, "kb"):
+		mult, s = 1024, s[:len(s)-2]
+	case strings.HasSuffix(s, "MB"), strings.HasSuffix(s, "mb"):
+		mult, s = 1024*1024, s[:len(s)-2]
+	case strings.HasSuffix(s, "GB"), strings.HasSuffix(s, "gb"):
+		mult, s = 1024*1024*1024, s[:len(s)-2]
+	}
+
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil || n == 0 {
+		return 0, false
+	}
+
+	return n * mult, true
+}
+
+const defaultMaxMem uint64 = 64 * 1024 * 1024
+
+func MaxMemFromEnv() uint64 {
+	s := os.Getenv("LNND_MAX_MEM")
+	if s == "" {
+		return defaultMaxMem
+	}
+
+	n, ok := parseBytes(s)
+	if !ok || n == 0 {
+		return defaultMaxMem
+	}
+
+	return n
 }

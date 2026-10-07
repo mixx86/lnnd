@@ -2,6 +2,7 @@ package sched
 
 import (
 	"errors"
+	"lnn/internal/config"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
 	"lnn/internal/queues"
@@ -19,7 +20,7 @@ func NewService() *Service {
 		pressure: map[BPSourceID]*atomic.Uint32{
 			BPRequestsID: &atomic.Uint32{},
 		},
-		threshold: maxMemFromEnv(),
+		threshold: config.MaxMemFromEnv(),
 	}
 
 	s.pressureReleaseCond = sync.NewCond(&s.pressureMu)
@@ -90,6 +91,7 @@ func (s *Service) IsBackPressured(source BPSourceID) bool {
 }
 
 const requestEnqueueTimeout = 100 * time.Millisecond
+const writeConfirmTimeout = 10 * time.Second
 
 func (s *Service) SubmitRequest(
 	from *peer.RemoteNode,
@@ -102,12 +104,18 @@ func (s *Service) SubmitRequest(
 
 	s.WaitForPressureRelease(BPRequestsID)
 
-	if _, ok := q.TryEnqueueWithTimeout(
-		from,
-		req,
-		requestEnqueueTimeout,
-	); !ok {
+	pr, ok := q.TryEnqueueWithTimeout(from, req, requestEnqueueTimeout)
+	if !ok {
 		return ErrRequestsQueueFull
+	}
+
+	select {
+	case err := <-pr.Written:
+		if err != nil {
+			return err
+		}
+	case <-time.After(writeConfirmTimeout):
+		return ErrWriteTimeout
 	}
 
 	return nil

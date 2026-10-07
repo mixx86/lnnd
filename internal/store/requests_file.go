@@ -9,7 +9,7 @@ import (
 )
 
 // File header format:
-// [magic:4][lco:8][next_req_id:4]
+// [magic:4][lco:8][current_req_id:4]
 // lco stands for "last checkpoint offset"
 // Entry format (one per line):
 // Entry header:
@@ -32,22 +32,55 @@ import (
 // [checksum:4]
 
 
+func OpenRequestsFile(path string) (*RequestsFile, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", path, err)
+	}
+
+	reqFile := &RequestsFile{
+		path:  path,
+		file: f,
+	}
+
+	info, err := reqFile.file.Stat()
+	if err != nil {
+		if os.IsNotExist(err) {
+			reqFile.writeRequestsFileHeader(f)
+		} else {
+			logger.Daemon.Fatalf("error: %v", err)
+		}
+	}
+
+	if info.IsDir() {
+		logger.Daemon.Fatalf("error: requests shouldn't be a directory at %v", path)
+	}
+
+	if info.Size() == 0 {
+		reqFile.writeRequestsFileHeader(f)
+	}
+
+	if !reqFile.checkRequestsFileHeader(f) {
+		if err := f.Truncate(0); err != nil {
+			logger.Daemon.Fatalf("error truncating requests file: %v", err)
+		}
+		reqFile.writeRequestsFileHeader(f)
+	}
+
+	return reqFile, nil
+}
+
 // writeRequestsFileHeader assumes the file is empty; thus, it creates a first
 // checkpoint, which is not part of the file header.
-func (w *RequestsWriter) writeRequestsFileHeader() {
-	f, err := os.OpenFile(w.canPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", w.canPath, err)
-	}
-	defer f.Close()
-
+func (r *RequestsFile) writeRequestsFileHeader(f *os.File) {
 	var header [F_HEADER_TOTAL_LEN]byte
 	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
-	binary.BigEndian.PutUint64(header[F_HEADER_MAGIC_LEN:F_HEADER_TOTAL_LEN], F_HEADER_TOTAL_LEN)
+	binary.BigEndian.PutUint64(header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN], F_HEADER_TOTAL_LEN)
+	binary.BigEndian.PutUint32(header[F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN+F_HEADER_REQ_ID_LEN], 0)
 
-	var checkpoint [9]byte
+	var checkpoint [CHECKPOINT_LEN]byte
 	binary.BigEndian.PutUint32(checkpoint[:ENTRY_LENGTH_LEN], CHECKPOINT_LEN)
-	binary.BigEndian.PutUint32(checkpoint[ENTRY_LENGTH_LEN:ENTRY_LENGTH_LEN+OP_KIND_LEN], uint32(OP_CHECKPOINT))
+	checkpoint[ENTRY_LENGTH_LEN] = uint8(OP_CHECKPOINT)
 	binary.BigEndian.PutUint32(checkpoint[ENTRY_HEADER_LEN:ENTRY_HEADER_LEN+CHECKPOINT_CSUM_LEN], uint32(0))
 
 	if _, err := f.Write(header[:]); err != nil {
@@ -62,12 +95,12 @@ func (w *RequestsWriter) writeRequestsFileHeader() {
 	}
 }
 
-func (w *RequestsWriter) setLco(f *os.File, lco uint64) error {
+func (r *RequestsFile) setLco(lco uint64) error {
 	var buf [F_HEADER_LCO_LEN]byte
 
 	binary.BigEndian.PutUint64(buf[:], lco)
 
-	if _, err := f.WriteAt(
+	if _, err := r.file.WriteAt(
 		buf[:],
 		F_HEADER_MAGIC_LEN,
 	); err != nil {
@@ -77,10 +110,10 @@ func (w *RequestsWriter) setLco(f *os.File, lco uint64) error {
 	return nil
 }
 
-func (w *RequestsWriter) getLco(f *os.File) (int64, error) {
+func (r *RequestsFile) getLco() (int64, error) {
 	var b [F_HEADER_LCO_LEN]byte
 
-	if _, err := f.ReadAt(b[:], F_HEADER_MAGIC_LEN); err != nil {
+	if _, err := r.file.ReadAt(b[:], F_HEADER_MAGIC_LEN); err != nil {
 		return 0, err
 	}
 
@@ -107,8 +140,13 @@ func calculateCheckSum(data []byte) uint32 {
 	return checkSum
 }
 
-func (w *RequestsWriter) removeTail(f *os.File, info os.FileInfo) error {
-	lco, err := w.getLco(f)
+func (r *RequestsFile) removeTail() error {
+	info, err := r.file.Stat()
+	if err != nil {
+		return err
+	}
+		
+	lco, err := r.getLco()
 	if err != nil {
 		return err
 	}
@@ -124,7 +162,7 @@ func (w *RequestsWriter) removeTail(f *os.File, info os.FileInfo) error {
 
 	// The last checkpoint is valid, so everything after it is tail.
 	if checkpointEnd < info.Size() {
-		if err := f.Truncate(checkpointEnd); err != nil {
+		if err := r.file.Truncate(checkpointEnd); err != nil {
 			return fmt.Errorf(
 				"truncating requests tail at %d: %w",
 				checkpointEnd,
@@ -132,21 +170,21 @@ func (w *RequestsWriter) removeTail(f *os.File, info os.FileInfo) error {
 			)
 		}
 
-		return f.Sync()
+		return r.file.Sync()
 	}
 
 	// The last entry is the checkpoint itself. If we got here because
 	// checkEntries found corruption, the checkpoint checksum is invalid.
-	previousCheckpoint, err := w.findPreviousCheckpoint(f, int64(lco))
+	previousCheckpoint, err := r.findPreviousCheckpoint(int64(lco))
 	if err != nil {
 		// The initial checkpoint is the only checkpoint and there is
 		// therefore nothing before it to recover.
 		if errors.Is(err, ErrNoPreviousCheckpoint) {
-			if err := f.Truncate(F_HEADER_TOTAL_LEN + CHECKPOINT_LEN); err != nil {
+			if err := r.file.Truncate(F_HEADER_TOTAL_LEN + CHECKPOINT_LEN); err != nil {
 				return err
 			}
 
-			return f.Sync()
+			return r.file.Sync()
 		}
 
 		return err
@@ -155,7 +193,7 @@ func (w *RequestsWriter) removeTail(f *os.File, info os.FileInfo) error {
 	previousCheckpointEnd :=
 		previousCheckpoint + int64(CHECKPOINT_LEN)
 
-	if err := f.Truncate(previousCheckpointEnd); err != nil {
+	if err := r.file.Truncate(previousCheckpointEnd); err != nil {
 		return fmt.Errorf(
 			"truncating corrupted checkpoint at %d: %w",
 			lco,
@@ -163,10 +201,10 @@ func (w *RequestsWriter) removeTail(f *os.File, info os.FileInfo) error {
 		)
 	}
 
-	if err := w.setLco(f, uint64(previousCheckpoint)); err != nil {
+	if err := r.setLco(uint64(previousCheckpoint)); err != nil {
 		return err
 	}
 
-	return f.Sync()
+	return r.file.Sync()
 }
 

@@ -3,7 +3,7 @@ package queues
 import (
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
-	"sync/atomic"
+
 	"time"
 )
 
@@ -17,18 +17,18 @@ const (
 // PendingRequest is transient: it exists only while the WAL writer is persisting
 // the request to disk. Once Written is closed, this struct must not be retained —
 // the on-disk file is the sole source of truth for pending requests.
-// From is needed by the WAL writer to record the peer UUID.
 type PendingRequest struct {
-	ID         uint32
 	From       *peer.RemoteNode
 	Req        protocol.InboundRequest
 	Written    chan error
-	EnqueuedAt time.Time
+	EnqueuedAt uint64
 }
 
 type RequestsQueue struct {
 	queue      chan PendingRequest
-	reqCounter atomic.Uint32
+}
+
+type FilesQueue struct {
 }
 
 type Queue[T any, U any] interface {

@@ -32,11 +32,10 @@ func NewRequestsQueue() *RequestsQueue {
 
 func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundRequest) PendingRequest {
 	return PendingRequest{
-		ID:         q.reqCounter.Add(1),
 		From:       from,
 		Req:        req,
 		Written:    make(chan error),
-		EnqueuedAt: time.Now(),
+		EnqueuedAt: uint64(time.Now().Unix()),
 	}
 }
 
@@ -52,10 +51,9 @@ func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRe
 
 func (q *RequestsQueue) TryEnqueueWithTimeout(from *peer.RemoteNode, req protocol.InboundRequest, timeout time.Duration) (PendingRequest, bool) {
 	pr := q.makePending(from, req)
-	ptr := &pr
 	select {
 	case q.queue <- pr:
-		ptr.EnqueuedAt = time.Now()
+		pr.EnqueuedAt = uint64(time.Now().Unix())
 		return pr, true
 	case <-time.After(timeout):
 		return PendingRequest{}, false
