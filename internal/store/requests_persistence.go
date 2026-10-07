@@ -87,7 +87,27 @@ func (w *RequestsWriter) writeBatch(f *os.File, bw *bufio.Writer, batch []queues
 
 		switch op {
 		case OP_REQUEST:
-			fields = pr.Req.Encode()
+			reqPaths := pr.Req.Encode()
+
+			req := make([]byte, REQUEST_STATIC_FIELDS_LEN+len(reqPaths))
+
+			offset := 0
+
+			binary.BigEndian.PutUint16(req[offset:offset+REQUEST_REQ_TYPE_LEN], uint16(pr.Req.Type()))
+			offset += REQUEST_REQ_TYPE_LEN
+
+			copy(req[offset:offset+REQUEST_PEER_UUID_LEN], pr.From.ID[:])
+			offset += REQUEST_PEER_UUID_LEN
+
+			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], w.nextReqID())
+			offset += REQUEST_REQ_ID_LEN
+
+			binary.BigEndian.PutUint64(req[offset:offset+REQUEST_UNIX_TS_LEN], uint64(time.Now().Unix()))
+			offset += REQUEST_UNIX_TS_LEN
+
+			copy(req[offset:], reqPaths)
+
+			fields = req
 
 		case OP_CHECKPOINT:
 			const maxRetries = 5

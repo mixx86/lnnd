@@ -42,6 +42,7 @@ func (r SymLinkRequest) Encode() []byte {
 }
 
 func (SymLinkRequest) Type() MsgKind { return MsgSymLinkRequest }
+
 func (r SymLinkRequest) Size() uint32 {
 	var payloadSize uint32
 	if r.Src != "" {

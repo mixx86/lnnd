@@ -7,13 +7,14 @@ import (
 )
 
 // Message types for the LNN protocol.
-type MsgKind uint8
+type MsgKind uint16
 
 const (
 	MsgHello MsgKind = iota
 	MsgChallenge
 	MsgChallengeResp
 	MsgError
+	// TODO: change name to MsgSymLink
 	MsgLinkSym
 	MsgLinkHard
 	MsgSymLinkRequest
