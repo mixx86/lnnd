@@ -73,7 +73,7 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sc
 			fmt.Errorf("error parsing the inbound request.\n")
 		}
 		go func() {
-			err := sc.SubmitRequest(s.Remote, ibrequest)
+			err := sc.SubmitRequest(s.Remote, ibrequest, msg.Header.Tag)
 
 			if err != nil {
 				if errors.Is(err, sched.ErrRequestsQueueFull) {

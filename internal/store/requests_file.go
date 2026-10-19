@@ -19,7 +19,7 @@ import (
 // Payload:
 //
 // Request (op=0):
-// [req_type:2][peer_uuid:16][req_id:4][unix_ts:8]
+// [req_type:2][peer_uuid:16][req_id:4][wip: rmt_req_id:4][unix_ts:8]
 // [src_len:2][src:src_len][dst_len:2][dst:dst_len]
 //
 // Accepted (op=1):
@@ -46,7 +46,7 @@ func OpenRequestsFile(path string) (*RequestsFile, error) {
 	info, err := reqFile.file.Stat()
 	if err != nil {
 		if os.IsNotExist(err) {
-			reqFile.writeRequestsFileHeader(f)
+			reqFile.writeFileHeader()
 		} else {
 			logger.Daemon.Fatalf("error: %v", err)
 		}
@@ -57,22 +57,56 @@ func OpenRequestsFile(path string) (*RequestsFile, error) {
 	}
 
 	if info.Size() == 0 {
-		reqFile.writeRequestsFileHeader(f)
+		reqFile.writeFileHeader()
+		return reqFile, nil
 	}
 
-	if !reqFile.checkRequestsFileHeader(f) {
+	reset := func() {
 		if err := f.Truncate(0); err != nil {
 			logger.Daemon.Fatalf("error truncating requests file: %v", err)
 		}
-		reqFile.writeRequestsFileHeader(f)
+		reqFile.writeFileHeader()
+	}
+	
+	for {
+		err := reqFile.checkFileHeader()
+		if err == nil {
+			break
+		}
+
+		if errors.Is(err, ErrInvalidMagic) {
+			reqFile.overrideMagic()
+			continue
+		}
+
+		if errors.Is(err, ErrInvalidLCO) {
+			lco, err := reqFile.findLCO()
+			if err == nil {
+				if err := reqFile.setLco(lco); err == nil {
+					continue
+				}
+			}
+		}
+
+		reset()
+		break
 	}
 
 	return reqFile, nil
 }
 
-// writeRequestsFileHeader assumes the file is empty; thus, it creates a first
+func (r *RequestsFile) overrideMagic() error {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], F_HEADER_MAGIC)
+	if _, err := r.file.WriteAt(buf[:], 0); err != nil {
+		return err
+	}
+	return r.file.Sync()
+}
+
+// writeFileHeader assumes the file is empty; thus, it creates a first
 // checkpoint, which is not part of the file header.
-func (r *RequestsFile) writeRequestsFileHeader(f *os.File) {
+func (r *RequestsFile) writeFileHeader() {
 	var header [F_HEADER_TOTAL_LEN]byte
 	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
 	binary.BigEndian.PutUint64(header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN], F_HEADER_TOTAL_LEN)
@@ -83,14 +117,14 @@ func (r *RequestsFile) writeRequestsFileHeader(f *os.File) {
 	checkpoint[ENTRY_LENGTH_LEN] = uint8(OP_CHECKPOINT)
 	binary.BigEndian.PutUint32(checkpoint[ENTRY_HEADER_LEN:ENTRY_HEADER_LEN+CHECKPOINT_CSUM_LEN], uint32(0))
 
-	if _, err := f.Write(header[:]); err != nil {
+	if _, err := r.file.Write(header[:]); err != nil {
 		logger.Daemon.Fatalf("error writing the file header: %v", err)
 	}
-	if _, err := f.Write(checkpoint[:]); err != nil {
+	if _, err := r.file.Write(checkpoint[:]); err != nil {
 		logger.Daemon.Fatalf("error writing the initial checkpoint: %v", err)
 	}
 
-	if err := f.Sync(); err != nil {
+	if err := r.file.Sync(); err != nil {
 		logger.Daemon.Fatalf("error writing the file header: %v", err)
 	}
 }
@@ -140,6 +174,25 @@ func calculateCheckSum(data []byte) uint32 {
 	return checkSum
 }
 
+func (r *RequestsFile) resetToLastValidCheckpoint() error {
+  	checkpoint, err := r.findLCO()
+  	if err != nil {
+  		return err
+  	}
+
+  	checkpointEnd := int64(checkpoint) + int64(CHECKPOINT_LEN)
+
+  	if err := r.file.Truncate(checkpointEnd); err != nil {
+  		return err
+  	}
+
+  	if err := r.setLco(checkpoint); err != nil {
+  		return err
+  	}
+
+  	return r.file.Sync()
+}
+
 func (r *RequestsFile) removeTail() error {
 	info, err := r.file.Stat()
 	if err != nil {
@@ -153,12 +206,14 @@ func (r *RequestsFile) removeTail() error {
 
 	checkpointEnd := int64(lco) + int64(CHECKPOINT_LEN)
 
-	if checkpointEnd > info.Size() {
-		return fmt.Errorf(
-			"invalid last checkpoint offset %d",
-			lco,
-		)
-	}
+	_, entryLength, op, err := r.readEntry(lco, info.Size())
+  	if err != nil || op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
+	return r.resetToLastValidCheckpoint()
+  }
+
+  if checkpointEnd > info.Size() {
+	return r.resetToLastValidCheckpoint()
+  }
 
 	// The last checkpoint is valid, so everything after it is tail.
 	if checkpointEnd < info.Size() {

@@ -15,8 +15,7 @@ type RequestsCache struct {
 
 	entries map[uint32]uint16
 
-	pending    int
-	flushEvery int
+	capacity uint32
 }
 
 type RequestsFile struct {

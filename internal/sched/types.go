@@ -9,7 +9,8 @@ import (
 type BPSourceID uint16
 
 const (
-	BPRequestsID = iota
+	BPRequestsCacheID BPSourceID = iota
+	BPRequestsID
 	BPFilesID
 )
 

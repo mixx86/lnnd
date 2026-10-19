@@ -18,7 +18,9 @@ func NewService() *Service {
 			queues.FilesQueueID:    queues.NewFilesQueue(),
 		},
 		pressure: map[BPSourceID]*atomic.Uint32{
-			BPRequestsID: &atomic.Uint32{},
+			BPRequestsCacheID: &atomic.Uint32{},
+			BPRequestsID:      &atomic.Uint32{},
+			BPFilesID: 		   &atomic.Uint32{},
 		},
 		threshold: config.MaxMemFromEnv(),
 	}
@@ -45,6 +47,19 @@ func (s *Service) WaitForPressureChange() {
 	s.pressureChangeCond.Wait()
 }
 
+func (s *Service) AddPressure(source BPSourceID) {
+	s.pressureChangeCond.L.Lock()
+	defer s.pressureChangeCond.L.Unlock()
+
+	pressure := s.pressure[source]
+	if pressure == nil {
+		return
+	}
+
+	pressure.Add(1)
+	s.pressureChangeCond.Broadcast()
+}
+
 func (s *Service) ReleasePressure(source BPSourceID) {
 	s.pressureReleaseCond.L.Lock()
 	defer s.pressureReleaseCond.L.Unlock()
@@ -69,10 +84,12 @@ func (s *Service) ReleasePressure(source BPSourceID) {
 
 func bpPriority(source BPSourceID) uint16 {
 	switch source {
-	case BPRequestsID:
+	case BPRequestsCacheID:
 		return 0
-	case BPFilesID:
+	case BPRequestsID:
 		return 1
+	case BPFilesID:
+		return 2
 	default:
 		return 0
 	}
@@ -96,6 +113,7 @@ const writeConfirmTimeout = 10 * time.Second
 func (s *Service) SubmitRequest(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
+	tag uint16,
 ) error {
 	q, ok := s.queues[queues.RequestsQueueID].(*queues.RequestsQueue)
 	if !ok {
@@ -104,7 +122,7 @@ func (s *Service) SubmitRequest(
 
 	s.WaitForPressureRelease(BPRequestsID)
 
-	pr, ok := q.TryEnqueueWithTimeout(from, req, requestEnqueueTimeout)
+	pr, ok := q.TryEnqueueWithTimeout(from, req, tag, requestEnqueueTimeout)
 	if !ok {
 		return ErrRequestsQueueFull
 	}

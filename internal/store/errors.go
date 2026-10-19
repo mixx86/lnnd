@@ -10,4 +10,6 @@ var (
     ErrTruncatedEntry       = errors.New("truncated entry")
     ErrChecksumMismatch     = errors.New("checkpoint checksum mismatch")
     ErrUnexpectedCheckpoint = errors.New("unexpected checkpoint")
+	ErrInvalidMagic			= errors.New("invalid magic number")
+	ErrInvalidLCO			= errors.New("invalid last checkpoint offset")
 )

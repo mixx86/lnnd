@@ -27,12 +27,6 @@ const (
 )
 
 const (
-	CACHE_REQ_ID_LEN = 4
-	CACHE_TAG_LEN    = 2
-	CACHE_ENTRY_LEN  = CACHE_REQ_ID_LEN + CACHE_TAG_LEN
-)
-
-const (
 	F_HEADER_MAGIC      uint32 = 0x4C4E4E52 // lnnr
 	F_HEADER_MAGIC_LEN         = 4
 	F_HEADER_LCO_LEN           = 8
@@ -72,7 +66,7 @@ const (
 func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
 	reqCache, err := OpenRequestsCache(
 		filepath.Join(dir, "requests.cache"),
-		300,
+		2,
 	)
 	if err != nil {
 		logger.Daemon.Fatalf("error opening requests cache: %v", err)

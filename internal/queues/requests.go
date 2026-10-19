@@ -30,17 +30,18 @@ func NewRequestsQueue() *RequestsQueue {
 	}
 }
 
-func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundRequest) PendingRequest {
+func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16) PendingRequest {
 	return PendingRequest{
 		From:       from,
 		Req:        req,
 		Written:    make(chan error),
 		EnqueuedAt: uint64(time.Now().Unix()),
+		Tag: tag,
 	}
 }
 
-func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRequest) (PendingRequest, bool) {
-	pr := q.makePending(from, req)
+func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16) (PendingRequest, bool) {
+	pr := q.makePending(from, req, tag)
 	select {
 	case q.queue <- pr:
 		return pr, true
@@ -49,8 +50,8 @@ func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRe
 	}
 }
 
-func (q *RequestsQueue) TryEnqueueWithTimeout(from *peer.RemoteNode, req protocol.InboundRequest, timeout time.Duration) (PendingRequest, bool) {
-	pr := q.makePending(from, req)
+func (q *RequestsQueue) TryEnqueueWithTimeout(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16, timeout time.Duration) (PendingRequest, bool) {
+	pr := q.makePending(from, req, tag)
 	select {
 	case q.queue <- pr:
 		pr.EnqueuedAt = uint64(time.Now().Unix())

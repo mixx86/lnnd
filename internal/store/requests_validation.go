@@ -4,25 +4,24 @@ import (
 	"encoding/binary"
 	"fmt"
 	"lnn/internal/logger"
-	"os"
 
 	"github.com/google/uuid"
 )
 
-func (r *RequestsFile) checkRequestsFileHeader(f *os.File) bool {
+func (r *RequestsFile) checkFileHeader() error {
 	header := make([]byte, F_HEADER_TOTAL_LEN)
-	if _, err := f.ReadAt(header, 0); err != nil {
-		return false
+	if _, err := r.file.ReadAt(header, 0); err != nil {
+		return err
 	}
 
 	magic := binary.BigEndian.Uint32(header[:F_HEADER_MAGIC_LEN])
 	if magic != F_HEADER_MAGIC {
-		return false
+		return ErrInvalidMagic
 	}
 
 	lco := binary.BigEndian.Uint64(header[F_HEADER_MAGIC_LEN : F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN])
 
-	info, err := f.Stat()
+	info, err := r.file.Stat()
 	if err != nil {
 		logger.Daemon.Fatalf(
 			"error: couldn't stat requests file at %v: %v",
@@ -32,10 +31,10 @@ func (r *RequestsFile) checkRequestsFileHeader(f *os.File) bool {
 	}
 
 	if lco < F_HEADER_TOTAL_LEN || lco >= uint64(info.Size()) {
-		return false
+		return ErrInvalidLCO
 	}
 
-	return true
+	return nil
 }
 
 func (r *RequestsFile) checkEntries() (error, bool) {
@@ -54,6 +53,15 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 	if int64(lco) < int64(F_HEADER_TOTAL_LEN) || checkpointEnd > fileSize {
 		return fmt.Errorf("invalid last checkpoint offset: %d", lco), false
 	}
+
+	_, entryLength, op, err := r.readEntry(lco, fileSize)
+  	if err != nil {
+  		return err, false
+  	}
+
+  	if op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
+  		return fmt.Errorf("invalid checkpoint at lco %d", lco), false
+  	}
 
 	// There are entries after the last checkpoint. Validate only the
 	// uncheckpointed tail using entry_length.
@@ -180,6 +188,38 @@ func (r *RequestsFile) checkTailEntries(
 
 	return nil, false
 }
+
+func (r *RequestsFile) findLCO() (uint64, error) {
+  	info, err := r.file.Stat()
+  	if err != nil {
+  		return 0, err
+  	}
+
+  	lastCheckpoint := int64(-1)
+  	offset := int64(F_HEADER_TOTAL_LEN)
+
+  	for offset < info.Size() {
+  		_, entryLength, op, err := r.readEntry(offset, info.Size())
+  		if err != nil {
+  			break
+  		}
+
+  		if op == OP_CHECKPOINT {
+  			if entryLength != uint32(CHECKPOINT_LEN) {
+  				break
+  			}
+  			lastCheckpoint = offset
+  		}
+
+  		offset += int64(entryLength)
+  	}
+
+  	if lastCheckpoint == -1 {
+  		return 0, ErrNoPreviousCheckpoint
+  	}
+
+  	return uint64(lastCheckpoint), nil
+  }
 
 func (r *RequestsFile) findPreviousCheckpoint(
 	lco int64,

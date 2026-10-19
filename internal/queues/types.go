@@ -22,6 +22,7 @@ type PendingRequest struct {
 	Req        protocol.InboundRequest
 	Written    chan error
 	EnqueuedAt uint64
+	Tag        uint16
 }
 
 type RequestsQueue struct {

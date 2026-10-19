@@ -4,17 +4,27 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
 	"os"
 )
 
-func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
-	if flushEvery <= 0 {
-		return nil, fmt.Errorf("invalid cache flush interval: %d", flushEvery)
-	}
+//  slot:
+//    [req_id:4]
+//    [tag:2]
+// file size = 16 + capacity*6
 
+
+const (
+  	CACHE_REQ_ID_LEN = 4
+  	CACHE_TAG_LEN    = 2
+  	CACHE_ENTRY_LEN  = CACHE_REQ_ID_LEN + CACHE_TAG_LEN
+  )
+
+
+func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
 	f, err := os.OpenFile(
 		path,
-		os.O_RDWR|os.O_CREATE|os.O_APPEND,
+		os.O_RDWR|os.O_CREATE,
 		0644,
 	)
 	if err != nil {
@@ -24,7 +34,6 @@ func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
 	c := &RequestsCache{
 		file:       f,
 		entries:    make(map[uint32]uint16),
-		flushEvery: flushEvery,
 	}
 
 	if err := c.load(); err != nil {
@@ -77,35 +86,35 @@ func (c *RequestsCache) load() error {
 	return nil
 }
 
-func (c *RequestsCache) Put(reqID uint32, tag uint16) error {
+func (c *RequestsCache) Put(reqID uint32, tag uint16, flush bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var buf [CACHE_ENTRY_LEN]byte
-
-	binary.BigEndian.PutUint32(
-		buf[:CACHE_REQ_ID_LEN],
-		reqID,
-	)
-
-	binary.BigEndian.PutUint16(
-		buf[CACHE_REQ_ID_LEN:],
-		tag,
-	)
-
-	if _, err := c.file.Write(buf[:]); err != nil {
-		return err
-	}
-
 	c.entries[reqID] = tag
-	c.pending++
 
-	if c.pending >= c.flushEvery {
-		if err := c.file.Sync(); err != nil {
-			return err
+	if flush == true {
+		sizeEntries := ((len(c.entries)) * CACHE_ENTRY_LEN)
+		buf := make([]byte, sizeEntries)
+		counter := 1
+		for cache_reqID, cache_tag := range c.entries {	
+			offset := (counter * CACHE_ENTRY_LEN)-CACHE_ENTRY_LEN
+			binary.BigEndian.PutUint32(
+				buf[offset:offset+CACHE_REQ_ID_LEN],
+				cache_reqID,
+			)
+			binary.BigEndian.PutUint16(
+				buf[offset+CACHE_REQ_ID_LEN:offset+CACHE_ENTRY_LEN],
+				cache_tag,
+			)
+			counter += 1
 		}
 
-		c.pending = 0
+		if _, err := c.file.Write(buf[:]); err != nil {
+			return err
+		}
+		if err := c.file.Sync(); err != nil {
+			return err
+		}	
 	}
 
 	return nil

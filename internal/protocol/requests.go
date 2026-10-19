@@ -122,14 +122,15 @@ func (SymLinkRequest) inboundRequest() {}
 
 
 type Resolution struct {
-	ReqID uint32
+	LCLReqID uint32
+	RMTReqID uint32
 	Accepted bool
 	Tag uint16
 }
 
 func (r Resolution) Encode() []byte {
 	buf := make([]byte, 7)
-	binary.BigEndian.PutUint32(buf[:], r.ReqID)
+	binary.BigEndian.PutUint32(buf[:], r.RMTReqID)
 	if r.Accepted {
    	 buf[4] = 1
 	} else {

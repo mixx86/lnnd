@@ -27,16 +27,20 @@ func (r *RequestsFile) writeEntry(bw *bufio.Writer, op OP_KIND, fields []byte) e
 }
 
 func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
-	// Cache before WAL: a tag without resolution is harmless,
-	// a resolution without tag breaks recovery.
-	for _, pr := range batch {
-		if res, ok := pr.Req.(protocol.Resolution); ok {
-			if err := w.reqCache.Put(res.ReqID, res.Tag); err != nil {
-				notifyWriteResult(batch, err)
-				return err
+	reqIDs := make([]uint32, len(batch))
+	for i := range batch {
+    	reqIDs[i] = w.reqFile.nextReqID()
+	}
+	go func(){
+		lastIdx := len(batch) - 1
+		var flush bool
+		for idx, pr := range batch {
+			if idx == lastIdx { flush = true }
+			if err := w.reqCache.Put(reqIDs[idx], pr.Tag, flush); err != nil {
+				return
 			}
 		}
-	}
+	}()
 
 	f := w.reqFile.file
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
@@ -44,7 +48,7 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 	}
 	bw := bufio.NewWriter(w.reqFile.file)
 
-	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, OP_REQUEST); err != nil {
+	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, OP_REQUEST); err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
@@ -62,8 +66,9 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 		}
 
 		batch = append(batch, req)
+		newReqID := w.reqFile.nextReqID()
 
-		if err := w.reqFile.writeBatch(w.reqFile.file, bw, []queues.PendingRequest{req}, OP_REQUEST); err != nil {
+		if err := w.reqFile.writeBatch(w.reqFile.file, bw, []queues.PendingRequest{req}, []uint32{newReqID}, OP_REQUEST); err != nil {
 			notifyWriteResult(batch, err)
 			return err
 		}
@@ -109,8 +114,8 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 
 // WARNING: writeBatch does ONLY write in the buffer, make sure to call bw.Flush and f.Sync
 // once you're done writing unless you don't actually want to save the content.
-func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.PendingRequest, op OP_KIND) error {
-	for _, pr := range batch {
+func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.PendingRequest, reqIDs []uint32, op OP_KIND) error {
+	for idx, pr := range batch {
 		var fields []byte
 
 		switch op {
@@ -127,7 +132,7 @@ func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.P
 			copy(req[offset:offset+REQUEST_PEER_UUID_LEN], pr.From.ID[:])
 			offset += REQUEST_PEER_UUID_LEN
 
-			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], r.nextReqID())
+			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], reqIDs[idx])
 			offset += REQUEST_REQ_ID_LEN
 
 			binary.BigEndian.PutUint64(req[offset:offset+REQUEST_UNIX_TS_LEN], pr.EnqueuedAt)
@@ -140,7 +145,7 @@ func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.P
 		case OP_ACCEPTED, OP_REJECTED:
 			if res, ok := pr.Req.(protocol.Resolution); ok {
 				fieldsBuf := make([]byte, REQUEST_REQ_ID_LEN)
-				binary.BigEndian.PutUint32(fieldsBuf, res.ReqID)
+				binary.BigEndian.PutUint32(fieldsBuf, res.LCLReqID)
 				fields = fieldsBuf
 			} else {
 				return fmt.Errorf("invalid resolution request")
