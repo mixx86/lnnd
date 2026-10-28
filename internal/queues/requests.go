@@ -74,21 +74,3 @@ func (q *RequestsQueue) TryDequeue() (PendingRequest, bool) {
 	}
 }
 
-/*// AddPressure signals an io_uring operation started. Must pair with RemovePressure.
-func (m *Manager) AddPressure() {
-	m.ioPressure.Add(1)
-}
-
-// RemovePressure signals an io_uring operation completed.
-func (m *Manager) RemovePressure() {
-	m.ioPressure.Add(-1)
-}
-
-// Pressure returns the current number of active io_uring operations.
-func (m *Manager) Pressure() int32 {
-	return m.ioPressure.Load()
-}
-
-func (m *Manager) PressureDone() <-chan struct{} {
-	return m.pressureDone
-}*/

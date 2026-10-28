@@ -36,11 +36,13 @@ import (
  * used for recovery purposes, as doing so would require inferring state that
  * can't be reliably determined from this field alone.
 
- * For example, if we send a `RecoverRequest` (without Tag, just the rmt_req_id), we can't know whether the peer's corresponding
- * request was successfully persisted before our own request was interrupted, or whether that request is corrupted or
- * does not exist at all. Similarly, after an unexpected crash, we can't guarantee that `rmt_req_id` itself is consistent 
+ * For example, if we send a `RecoverRequest` (without Tag, just the rmt_req_id), we can't know whether
+ * the peer's corresponding request was successfully persisted before our own request was interrupted,
+ * or whether that request is corrupted or does not exist at all.
+ * Similarly, after an unexpected crash, we can't guarantee that `rmt_req_id` itself is consistent 
  * or up to date. Using it for recovery would therefore require additional persistent state to track
- * the status of each request, increasing storage overhead while still introducing another piece of state that must itself be recovered.
+ * the status of each request, increasing storage overhead while still introducing another piece of
+ * state that must itself be recovered.
  * This cannot be solved reliably by simply relying on `rmt_req_id`.
 
  * We already have a dedicated mechanism for this purpose: the semi-cache based on pairs 'reqId' (local) 'tag'.

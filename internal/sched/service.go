@@ -2,13 +2,20 @@ package sched
 
 import (
 	"errors"
-	"lnn/internal/config"
+	"fmt"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
 	"lnn/internal/queues"
-	"sync"
+	
+	"github.com/shirou/gopsutil/v4/disk"
 	"sync/atomic"
 	"time"
+)
+
+const (
+    RequestsCacheWeight = 1.0
+    RequestsWeight      = 2.0
+    FilesWeight         = 4.0
 )
 
 func NewService() *Service {
@@ -17,94 +24,99 @@ func NewService() *Service {
 			queues.RequestsQueueID: queues.NewRequestsQueue(),
 			queues.FilesQueueID:    queues.NewFilesQueue(),
 		},
-		pressure: map[BPSourceID]*atomic.Uint32{
-			BPRequestsCacheID: &atomic.Uint32{},
-			BPRequestsID:      &atomic.Uint32{},
-			BPFilesID: 		   &atomic.Uint32{},
+		pressure: map[SourceID]*atomic.Uint32{
+			RequestsCacheID: &atomic.Uint32{},
+			RequestsID:      &atomic.Uint32{},
+			FilesID: 		   &atomic.Uint32{},
 		},
-		threshold: config.MaxMemFromEnv(),
 	}
 
-	s.pressureReleaseCond = sync.NewCond(&s.pressureMu)
-	s.pressureChangeCond = sync.NewCond(&s.pressureChangeMu)
+	s.WCB = map[SourceID]*WriterConfig{
+		RequestsCacheID: {
+			baseWeight:    RequestsCacheWeight,
+			weight:        RequestsCacheWeight,
+			expectedBytes: 4 << 10,
+		},
+		RequestsID: {
+			baseWeight:    RequestsWeight,
+			weight:        RequestsWeight,
+			expectedBytes: 16 << 10,
+		},
+		FilesID: {
+			baseWeight:    FilesWeight,
+			weight:        FilesWeight,
+			expectedBytes: 1 << 20,
+		},
+	}
+
+	s.sourceQueues = map[SourceID]queues.QueueID{
+    	RequestsID:      queues.RequestsQueueID,
+    	FilesID:         queues.FilesQueueID,
+	}
+
+	s.maxWriters = 8
+	s.maxWritersElevated = 4
+	s.maxWritersWhenOverloaded = 2
+	s.diskDevice = "nvme0n1"
+	s.schedulerWake = make(chan struct{}, 1)
 
 	return s
 }
 
-func (s *Service) WaitForPressureRelease(source BPSourceID) {
-	s.pressureReleaseCond.L.Lock()
-	defer s.pressureReleaseCond.L.Unlock()
+func (s *Service) WaitForPressureRelease(source SourceID) {
+    for s.IsBackPressured(source) {
+        s.pressureReleaseCond.L.Lock()
 
-	for s.IsBackPressured(source) {
-		s.pressureReleaseCond.Wait()
-	}
+        if s.IsBackPressured(source) {
+            s.pressureReleaseCond.Wait()
+        }
+
+        s.pressureReleaseCond.L.Unlock()
+    }
 }
 
 func (s *Service) WaitForPressureChange() {
-	s.pressureChangeCond.L.Lock()
-	defer s.pressureChangeCond.L.Unlock()
-
-	s.pressureChangeCond.Wait()
+    s.pressureChangeCond.L.Lock()
+    s.pressureChangeCond.Wait()
+    s.pressureChangeCond.L.Unlock()
 }
 
-func (s *Service) AddPressure(source BPSourceID) {
-	s.pressureChangeCond.L.Lock()
-	defer s.pressureChangeCond.L.Unlock()
+func (s *Service) UpdateQueuePressure(
+    queueID queues.QueueID,
+    queuedBytes int64,
+) {
+    pressure, ok := s.queuePressure[queueID]
+    if !ok {
+        return
+    }
 
-	pressure := s.pressure[source]
-	if pressure == nil {
-		return
-	}
+    pressure.QueuedBytes.Store(queuedBytes)
+    pressured := queuedBytes >= pressure.MaxQueuedBytes
+    wasPressured := pressure.Pressured.Swap(pressured)
 
-	pressure.Add(1)
-	s.pressureChangeCond.Broadcast()
+    if wasPressured && !pressured {
+        s.pressureReleaseCond.Broadcast()
+    }
+
+    if wasPressured != pressured {
+        s.pressureChangeCond.Broadcast()
+    }
 }
 
-func (s *Service) ReleasePressure(source BPSourceID) {
-	s.pressureReleaseCond.L.Lock()
-	defer s.pressureReleaseCond.L.Unlock()
-	pressure := s.pressure[source]
+func (s *Service) IsBackPressured(source SourceID) bool {
+    queueID, ok := s.sourceQueues[source]
+    if !ok {
+        return false
+    }
 
-	for {
-		current := pressure.Load()
+	// A bit of a hack to work around the `any` queue map and get at
+	// the shared pressure metrics without messing with the actual queue types.
+    pressure, ok := s.queuePressure[queueID]
+    if !ok {
+        return false
+    }
 
-		if current == 0 {
-			return
-		}
-
-		if pressure.CompareAndSwap(current, current-1) {
-			s.pressureChangeCond.Broadcast()
-			if current == 1 {
-				s.pressureReleaseCond.Broadcast()
-			}
-			return
-		}
-	}
-}
-
-func bpPriority(source BPSourceID) uint16 {
-	switch source {
-	case BPRequestsCacheID:
-		return 0
-	case BPRequestsID:
-		return 1
-	case BPFilesID:
-		return 2
-	default:
-		return 0
-	}
-}
-
-func (s *Service) IsBackPressured(source BPSourceID) bool {
-	priority := bpPriority(source)
-
-	for id, pressure := range s.pressure {
-		if bpPriority(id) > priority && pressure.Load() > 0 {
-			return true
-		}
-	}
-
-	return false
+    return pressure.Pressured.Load()
 }
 
 const requestEnqueueTimeout = 100 * time.Millisecond
@@ -120,7 +132,7 @@ func (s *Service) SubmitRequest(
 		return errors.New("error asserting the requests queue")
 	}
 
-	s.WaitForPressureRelease(BPRequestsID)
+	s.WaitForPressureRelease(RequestsID)
 
 	pr, ok := q.TryEnqueueWithTimeout(from, req, tag, requestEnqueueTimeout)
 	if !ok {
@@ -159,4 +171,267 @@ func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
 
 func NextFile() {
 
+}
+func (s *Service) WaitWriteTurn(source SourceID) {
+    w := &Writer{
+        source:       source,
+        turn:         make(chan struct{}),
+        blockedSince: time.Now(),
+    }
+
+    s.writeTurnMu.Lock()
+    s.waitingWriters = append(s.waitingWriters, w)
+    s.writeTurnMu.Unlock()
+
+    s.signalScheduler()
+
+    <-w.turn
+}
+
+func (s *Service) ReleaseWriteTurn(w *Writer) {
+	if w == nil {
+		return
+	}
+
+	s.writeTurnMu.Lock()
+	defer s.writeTurnMu.Unlock()
+
+	if _, ok := s.activeWriters[w]; !ok {
+		return
+	}
+
+	delete(s.activeWriters, w)
+	w.granted = false
+
+	s.signalScheduler()
+}
+
+func (s *Service) signalScheduler() {
+	select {
+	case s.schedulerWake <- struct{}{}:
+	default:
+	}
+}
+
+func DiskUtilization(device string, interval time.Duration) (float64, error) {
+	if interval <= 0 {
+		return 0, fmt.Errorf("interval must be positive")
+	}
+
+	before, err := disk.IOCounters()
+	if err != nil {
+		return 0, err
+	}
+
+	first, ok := before[device]
+	if !ok {
+		return 0, fmt.Errorf("device %q not found", device)
+	}
+
+	time.Sleep(interval)
+
+	after, err := disk.IOCounters()
+	if err != nil {
+		return 0, err
+	}
+
+	last, ok := after[device]
+	if !ok {
+		return 0, fmt.Errorf("device %q not found", device)
+	}
+
+	if last.IoTime < first.IoTime {
+		return 0, fmt.Errorf("disk counters reset")
+	}
+
+	elapsedMS := float64(interval) / float64(time.Millisecond)
+	busyMS := float64(last.IoTime - first.IoTime)
+
+	return busyMS / elapsedMS * 100, nil
+}
+
+func (s *Service) Run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+		case <-s.schedulerWake:
+		}
+
+		utilization, err := DiskUtilization(
+			s.diskDevice,
+			200*time.Millisecond,
+		)
+		if err == nil {
+			s.UpdateDiskUtilization(utilization)
+		}
+
+		s.dispatchWriters()
+	}
+}
+
+func (s *Service) selectHighestPriorityWriter() int {
+    bestIndex := 0
+    bestPriority := -1
+
+    for i, w := range s.waitingWriters {
+        cfg := s.WCB[w.source]
+        if cfg == nil {
+            continue
+        }
+
+        if int(cfg.weight) > bestPriority {
+            bestPriority = int(cfg.weight)
+            bestIndex = i
+        }
+    }
+
+    return bestIndex
+}
+
+func (s *Service) dispatchWriters() {
+    s.writeTurnMu.Lock()
+    defer s.writeTurnMu.Unlock()
+
+    limit := s.maxWriters
+
+    switch s.diskLoad.State {
+    case DiskLoadNormal:
+        limit = s.maxWriters
+
+    case DiskLoadElevated:
+        limit = s.maxWritersElevated
+
+    case DiskLoadSaturated:
+        limit = s.maxWritersWhenOverloaded
+    }
+
+    for len(s.activeWriters) < limit &&
+        len(s.waitingWriters) > 0 {
+
+        selected := 0
+
+        if s.diskLoad.State == DiskLoadSaturated || s.diskLoad.State == DiskLoadElevated {
+            selected = s.selectHighestPriorityWriter()
+        }
+
+        w := s.waitingWriters[selected]
+
+        s.waitingWriters = append(
+            s.waitingWriters[:selected],
+            s.waitingWriters[selected+1:]...,
+        )
+
+        s.activeWriters[w] = struct{}{}
+        w.granted = true
+        close(w.turn)
+    }
+}
+
+func (s *Service) UpdateDiskUtilization(util float64) {
+    const (
+        alpha       = 0.2
+        highLimit   = 90.0
+        lowLimit    = 65.0
+        holdTime    = 2 * time.Second
+    )
+
+    now := time.Now()
+
+    s.writeTurnMu.Lock()
+
+    d := &s.diskLoad
+
+    if !d.Initialized {
+        d.SmoothedUtil = util
+        d.Initialized = true
+    } else {
+        d.SmoothedUtil = alpha*util +
+            (1-alpha)*d.SmoothedUtil
+    }
+
+    previousState := d.State
+
+    switch {
+    case d.SmoothedUtil > highLimit:
+        d.LowSince = time.Time{}
+
+        if d.HighSince.IsZero() {
+            d.HighSince = now
+        }
+
+        if now.Sub(d.HighSince) >= holdTime {
+            d.State = DiskLoadSaturated
+        }
+
+    case d.SmoothedUtil < lowLimit:
+        d.HighSince = time.Time{}
+
+        if d.LowSince.IsZero() {
+            d.LowSince = now
+        }
+
+        if now.Sub(d.LowSince) >= holdTime {
+            d.State = DiskLoadNormal
+        }
+
+    default:
+        d.HighSince = time.Time{}
+        d.LowSince = time.Time{}
+
+        if d.State == DiskLoadNormal {
+            d.State = DiskLoadElevated
+        } else if d.State == DiskLoadSaturated {
+            d.State = DiskLoadElevated
+        }
+    }
+
+    changed := previousState != d.State
+
+    s.writeTurnMu.Unlock()
+
+    if changed {
+        s.signalScheduler()
+    }
+}
+
+func (s *Service) RecordWriteResult(
+    source SourceID,
+    writtenBytes int64,
+    elapsed time.Duration,
+) {
+    if writtenBytes <= 0 || elapsed <= 0 {
+        return
+    }
+
+    s.writeTurnMu.Lock()
+    defer s.writeTurnMu.Unlock()
+
+    cfg, ok := s.WCB[source]
+    if !ok || cfg.expectedBytes <= 0 {
+        return
+    }
+
+    normalized := time.Duration(
+        float64(elapsed) *
+            float64(cfg.expectedBytes) /
+            float64(writtenBytes),
+    )
+
+    const alpha = 0.1
+
+    if cfg.samples == 0 {
+        cfg.baseline = normalized
+    } else {
+        cfg.baseline = time.Duration(
+            (1-alpha)*float64(cfg.baseline) +
+                alpha*float64(normalized),
+        )
+    }
+
+    cfg.samples++
+
+    s.signalScheduler()
 }

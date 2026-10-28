@@ -4,15 +4,57 @@ import (
 	"lnn/internal/queues"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
-type BPSourceID uint16
+type SourceID uint16
 
 const (
-	BPRequestsCacheID BPSourceID = iota
-	BPRequestsID
-	BPFilesID
+	RequestsCacheID SourceID = iota
+	RequestsID
+	FilesID
 )
+
+type DiskLoadState uint8
+
+const (
+    DiskLoadNormal DiskLoadState = iota
+    DiskLoadElevated
+    DiskLoadSaturated
+)
+
+type DiskLoadTracker struct {
+    State       DiskLoadState
+    SmoothedUtil float64
+    Initialized bool
+    HighSince     time.Time
+    LowSince      time.Time
+}
+
+type Writer struct {
+    source         SourceID
+    turn           chan struct{}
+    requestedBytes int64
+    blockedSince   time.Time
+    granted        bool
+    budget time.Duration
+}
+
+type WriterConfig struct {
+    baseWeight float64
+    weight     float64
+
+    expectedBytes int64
+
+    baseline time.Duration
+    samples  int
+}
+
+type QueuePressure struct {
+    Pressured      atomic.Bool
+    QueuedBytes    atomic.Int64
+    MaxQueuedBytes int64
+}
 
 type Service struct {
 	// Fuck Go for not letting generic Queue[T, U] union cleanly here.
@@ -20,17 +62,27 @@ type Service struct {
 	// use any even though the queues themselves are strongly typed.
 	queues map[queues.QueueID]any
 
-	pressure map[BPSourceID]*atomic.Uint32
+    sourceQueues map[SourceID]queues.QueueID
+	queuePressure map[queues.QueueID]QueuePressure
 
-	// DO NOT create more mutexes. pressureChangeMu exists because waiting for a pressure
-	// change does not require any validation, it just locks and waits for a signal. Using the
-	// same mutex (pressureMu) may add a tiny wait to the whole workflow (when it isn't actually necessary),
-	// which could accumulate to a considerable amount of time.
-	pressureChangeMu sync.Mutex
-	pressureMu       sync.Mutex
+	pressure map[SourceID]*atomic.Uint32
 
-	pressureReleaseCond *sync.Cond
-	pressureChangeCond  *sync.Cond
+	writeTurnMu   sync.Mutex
+	writeTurnCond *sync.Cond
 
-	threshold uint64
+	// WCB stands for Write Control Block, based on 
+	// the same jargon used in OS process schedulers.
+    WCB map[SourceID]*WriterConfig
+
+	waitingWriters []*Writer
+    activeWriters  map[*Writer]struct{}
+
+	maxWriters       		 int
+	maxWritersElevated       int
+	maxWritersWhenOverloaded int
+
+	diskDevice string
+    diskLoad    DiskLoadTracker
+
+	schedulerWake chan struct{}
 }
