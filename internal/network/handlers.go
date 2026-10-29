@@ -49,7 +49,7 @@ func HandleConnTCP(conn net.Conn, sm *peer.SessionManager, schedService *sched.S
 	for {
 		msg, err := ReceiveTCP(conn)
 		if err != nil {
-			logger.Daemon.Printf("Error receving TCP packets: %v", err)
+			logger.Daemon.Printf("Error receiving TCP packets: %v", err)
 			return
 		}
 		err = HandleTCPMessage(conn, msg, p, schedService)
@@ -70,7 +70,7 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sc
 	case protocol.SymLinkRequest:
 		ibrequest, ok := msg.Body.(protocol.InboundRequest)
 		if !ok {
-			fmt.Errorf("error parsing the inbound request.\n")
+			return fmt.Errorf("error parsing the inbound request.\n")
 		}
 		go func() {
 			err := sc.SubmitRequest(s.Remote, ibrequest, msg.Header.Tag)

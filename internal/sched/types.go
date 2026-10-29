@@ -66,6 +66,8 @@ type Service struct {
 	queuePressure map[queues.QueueID]QueuePressure
 
 	pressure map[SourceID]*atomic.Uint32
+	pressureChangeCond		*sync.Cond
+	pressureReleaseCond		*sync.Cond
 
 	writeTurnMu   sync.Mutex
 	writeTurnCond *sync.Cond
@@ -83,6 +85,7 @@ type Service struct {
 
 	diskDevice string
     diskLoad    DiskLoadTracker
+	diskTrackerMu	sync.Mutex
 
 	schedulerWake chan struct{}
 }

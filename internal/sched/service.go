@@ -6,16 +6,24 @@ import (
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
 	"lnn/internal/queues"
-	
-	"github.com/shirou/gopsutil/v4/disk"
+
 	"sync/atomic"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 const (
     RequestsCacheWeight = 1.0
     RequestsWeight      = 2.0
     FilesWeight         = 4.0
+)
+
+
+const (
+    requestEnqueueTimeout = 100 * time.Millisecond
+    writeConfirmTimeout   = 10 * time.Second
+    pressureWaitTimeout   = 2 * time.Second
 )
 
 func NewService() *Service {
@@ -29,6 +37,7 @@ func NewService() *Service {
 			RequestsID:      &atomic.Uint32{},
 			FilesID: 		   &atomic.Uint32{},
 		},
+		activeWriters: map[*Writer]struct{}{},
 	}
 
 	s.WCB = map[SourceID]*WriterConfig{
@@ -53,6 +62,13 @@ func NewService() *Service {
     	RequestsID:      queues.RequestsQueueID,
     	FilesID:         queues.FilesQueueID,
 	}
+	QueuePressureTemplate := QueuePressure{
+		MaxQueuedBytes: 0,
+	}
+	s.queuePressure = map[queues.QueueID]QueuePressure{
+		queues.RequestsQueueID:  QueuePressureTemplate,
+		queues.FilesQueueID: 	 QueuePressureTemplate,
+	}
 
 	s.maxWriters = 8
 	s.maxWritersElevated = 4
@@ -73,6 +89,30 @@ func (s *Service) WaitForPressureRelease(source SourceID) {
 
         s.pressureReleaseCond.L.Unlock()
     }
+}
+
+func (s *Service) WaitForPressureReleaseWithTimeout(
+    source SourceID,
+    timeout time.Duration,
+) bool {
+    deadline := time.Now().Add(timeout)
+    ticker := time.NewTicker(10 * time.Millisecond)
+    defer ticker.Stop()
+
+    for s.IsBackPressured(source) {
+        remaining := time.Until(deadline)
+        if remaining <= 0 {
+            return false
+        }
+
+        select {
+        case <-ticker.C:
+        case <-time.After(remaining):
+            return !s.IsBackPressured(source)
+        }
+    }
+
+    return true
 }
 
 func (s *Service) WaitForPressureChange() {
@@ -119,9 +159,6 @@ func (s *Service) IsBackPressured(source SourceID) bool {
     return pressure.Pressured.Load()
 }
 
-const requestEnqueueTimeout = 100 * time.Millisecond
-const writeConfirmTimeout = 10 * time.Second
-
 func (s *Service) SubmitRequest(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
@@ -132,7 +169,9 @@ func (s *Service) SubmitRequest(
 		return errors.New("error asserting the requests queue")
 	}
 
-	s.WaitForPressureRelease(RequestsID)
+	if !s.WaitForPressureReleaseWithTimeout(RequestsID, pressureWaitTimeout) {
+		return ErrOverloaded
+	}
 
 	pr, ok := q.TryEnqueueWithTimeout(from, req, tag, requestEnqueueTimeout)
 	if !ok {
@@ -172,7 +211,7 @@ func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
 func NextFile() {
 
 }
-func (s *Service) WaitWriteTurn(source SourceID) {
+func (s *Service) WaitWriteTurn(source SourceID) *Writer {
     w := &Writer{
         source:       source,
         turn:         make(chan struct{}),
@@ -186,6 +225,8 @@ func (s *Service) WaitWriteTurn(source SourceID) {
     s.signalScheduler()
 
     <-w.turn
+
+	return w
 }
 
 func (s *Service) ReleaseWriteTurn(w *Writer) {
@@ -250,24 +291,20 @@ func DiskUtilization(device string, interval time.Duration) (float64, error) {
 	return busyMS / elapsedMS * 100, nil
 }
 
-func (s *Service) Run() {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
+func (s *Service) sampleDisk() {
 	for {
-		select {
-		case <-ticker.C:
-		case <-s.schedulerWake:
-		}
-
-		utilization, err := DiskUtilization(
-			s.diskDevice,
-			200*time.Millisecond,
-		)
+		util, err := DiskUtilization(s.diskDevice, 200*time.Millisecond)
 		if err == nil {
-			s.UpdateDiskUtilization(utilization)
+			s.UpdateDiskUtilization(util)
 		}
+		time.Sleep(800 * time.Millisecond)
+	}
+}
 
+func (s *Service) Run() {
+	go s.sampleDisk()
+
+	for range s.schedulerWake {
 		s.dispatchWriters()
 	}
 }
@@ -340,7 +377,7 @@ func (s *Service) UpdateDiskUtilization(util float64) {
 
     now := time.Now()
 
-    s.writeTurnMu.Lock()
+    s.diskTrackerMu.Lock()
 
     d := &s.diskLoad
 
@@ -390,7 +427,7 @@ func (s *Service) UpdateDiskUtilization(util float64) {
 
     changed := previousState != d.State
 
-    s.writeTurnMu.Unlock()
+    s.diskTrackerMu.Unlock()
 
     if changed {
         s.signalScheduler()
@@ -432,6 +469,4 @@ func (s *Service) RecordWriteResult(
     }
 
     cfg.samples++
-
-    s.signalScheduler()
 }

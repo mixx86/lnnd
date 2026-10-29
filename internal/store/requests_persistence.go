@@ -53,27 +53,8 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 		return err
 	}
 
-	for s.IsBackPressured(sched.BPRequestsID) {
-		if len(batch) >= maxBatch {
-			s.WaitForPressureRelease(sched.BPRequestsID)
-			break
-		}
-
-		req, err := s.NextRequest()
-		if err != nil {
-			notifyWriteResult(batch, err)
-			return err
-		}
-
-		batch = append(batch, req)
-		newReqID := w.reqFile.nextReqID()
-
-		if err := w.reqFile.writeBatch(w.reqFile.file, bw, []queues.PendingRequest{req}, []uint32{newReqID}, OP_REQUEST); err != nil {
-			notifyWriteResult(batch, err)
-			return err
-		}
-	}
-
+	wturn := s.WaitWriteTurn(sched.RequestsID)
+	defer s.ReleaseWriteTurn(wturn)
 	if err := bw.Flush(); err != nil {
 		notifyWriteResult(batch, err)
 		return err
@@ -107,6 +88,7 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
   	notifyWriteResult(batch, err)
   	return err
   }
+
 
 	notifyWriteResult(batch, nil)
 	return nil
