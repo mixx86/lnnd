@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-// --- ParseRequest ---
-
 func TestParseRequest_valid(t *testing.T) {
 	data := []byte(
 		`{"op":"link","type":"symreq","src":"192.168.1.34://path/to/file","dst":"./link"}`,
@@ -52,11 +50,6 @@ func TestParseRequest_invalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
-
-// --- Validate ---
-//
-// Validate splits Src ("<ip>://<path>") into req.IP and req.Src. After a
-// successful call req.Src holds only the cleaned, absolute path.
 
 func TestValidate_valid(t *testing.T) {
 	req := &Request{Src: "192.168.1.34://path/to/file"}
@@ -145,8 +138,6 @@ func TestValidate_emptyPathBecomesRoot(t *testing.T) {
 		t.Errorf("Src: got %q, want %q", req.Src, "/")
 	}
 }
-
-// --- Response.Encode ---
 
 func TestResponseEncode_ok(t *testing.T) {
 	data, err := Response{OK: true}.Encode()

@@ -6,10 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// HelloPayloadSize is the size in bytes of a hello message payload (UUID + public key).
 const HelloPayloadSize uint32 = 48
 
-// Hello contains peer identification information.
 type Hello struct {
 	ID        uuid.UUID
 	PublicKey ed25519.PublicKey
@@ -22,7 +20,6 @@ func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
 	return packet
 }
 
-// Encode serializes the hello message into wire format.
 func (m Hello) Encode() []byte {
 	return EncodeHello(m.ID, m.PublicKey)
 }
@@ -35,7 +32,6 @@ func (Hello) Size() uint32 {
 	return HelloPayloadSize
 }
 
-// ParseHello deserializes a hello message from raw bytes.
 func ParseHello(payload []byte) (Hello, error) {
 	var parsedPayload Hello
 	cursor := 0

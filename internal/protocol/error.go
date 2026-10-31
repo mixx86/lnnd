@@ -6,18 +6,16 @@ import (
 )
 
 const (
-	ErrorMessagePayloadSize = 43 // Total payload: 8-byte code + 35-byte message.
-	ErrorMessageSize        = 35 // Fixed-size message field; zero-padded on the wire.
-	CodeErrorMessageSize    = 8  // int64 error code, big-endian.
+	ErrorMessagePayloadSize = 43
+	ErrorMessageSize        = 35 // zero-padded on the wire
+	CodeErrorMessageSize    = 8
 )
 
-// ErrorMessage signals a protocol error to the remote peer.
 type Error struct {
 	Code    int64
 	Message string
 }
 
-// EncodeErrorMessage constructs a complete error message packet.
 // Payload layout: [code:8][message:35]
 func EncodeError(code int64, message string) []byte {
 	packet := make([]byte, HeaderSize+ErrorMessagePayloadSize)
@@ -28,12 +26,10 @@ func EncodeError(code int64, message string) []byte {
 	return packet
 }
 
-// Encode serializes the error message into wire format.
 func (e Error) Encode() []byte {
 	return EncodeError(e.Code, e.Message)
 }
 
-// ParseError deserializes an error message from raw bytes.
 func ParseError(payload []byte) (Error, error) {
 	if len(payload) != ErrorMessagePayloadSize {
 		return Error{}, errors.New("invalid payload size")

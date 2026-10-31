@@ -10,9 +10,6 @@ func NewTransport(cfg config.NetworkConfig) (Transport, error) {
 	case "tcp":
 		return NewTCPTransport(cfg.TCP), nil
 
-		//    case "quic":
-		//return NewQUICTransport(cfg.QUIC)
-
 	default:
 		return nil, fmt.Errorf(
 			"unsupported transport: %s",

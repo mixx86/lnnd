@@ -1,4 +1,3 @@
-// Package peer manages connections to remote peers.
 package peer
 
 import (
@@ -11,14 +10,14 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-// Register adds or replaces a session. Silent overwrite is correct on reconnect.
+// Register overwrites silently on purpose: a reconnecting peer must replace
+// its stale session.
 func (sm *SessionManager) Register(s *Session) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.sessions[s.Remote.ID] = s
 }
 
-// Get retrieves a session connection by ID. Returns nil, false if not found.
 func (sm *SessionManager) Get(id uuid.UUID) (*Session, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
@@ -26,7 +25,6 @@ func (sm *SessionManager) Get(id uuid.UUID) (*Session, bool) {
 	return s, ok
 }
 
-// Remove deletes a session connection from the manager.
 func (sm *SessionManager) Remove(id uuid.UUID) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()

@@ -8,7 +8,6 @@ import (
 	"net"
 )
 
-// OutBoundHandshake authenticates this node to a remote peer as the initiating side.
 func OutboundHandshake(
 	conn net.Conn,
 	i *identity.Service,
@@ -87,8 +86,6 @@ func OutboundHandshake(
 	return session, nil
 }
 
-// InBoundHandshake authenticates an incoming connection as the accepting side.
-// Returns a verified Peer registered in pm.
 func InboundHandshake(
 	conn net.Conn,
 	i *identity.Service,

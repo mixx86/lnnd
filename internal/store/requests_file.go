@@ -11,7 +11,7 @@ import (
 // File header format:
 // [magic:4][lco:8][current_req_id:4]
 // lco stands for "last checkpoint offset"
-// Entry format (one per line):
+// Entry format:
 // Entry header:
 //
 // [entry_length:4][op:1]

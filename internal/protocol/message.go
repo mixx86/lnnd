@@ -6,7 +6,6 @@ import (
 	"io"
 )
 
-// Message types for the LNN protocol.
 type MsgType uint16
 
 const (

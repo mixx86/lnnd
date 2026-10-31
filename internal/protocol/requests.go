@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 )
 
-// SymlinkRequest is sent by a peer requesting this node to create a symlink.
 // Dst is optional: if empty, the receiver decides the local path on --accept.
 // If Dst is set, the receiver cannot change it — only accept or reject.
 type SymlinkRequest struct {
@@ -77,7 +76,6 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 		// dst omitted — receiver decides the path on --accept.
 
 	case remaining <= 2:
-		// dst_len present but no dst bytes: malformed.
 		return SymlinkRequest{}, errors.New(
 			"incongruent data: dst_len present but dst missing",
 		)

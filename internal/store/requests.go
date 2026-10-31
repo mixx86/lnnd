@@ -27,7 +27,7 @@ const (
 )
 
 const (
-	fileHeaderMagic    uint32 = 0x4C4E4E52 // lnnr
+	fileHeaderMagic    uint32 = 0x4C4E4E52 // "LNNR"
 	fileHeaderMagicLen        = 4
 	fileHeaderLCOLen          = 8
 	fileHeaderReqIDLen        = 4

@@ -16,7 +16,6 @@ import (
 	"lnn/internal/config"
 )
 
-// NewService creates a new IdentityService by loading or generating local credentials.
 func NewService() (*Service, error) {
 	creds, err := LoadLocalCredentials()
 
@@ -28,12 +27,10 @@ func NewService() (*Service, error) {
 	}, nil
 }
 
-// Credentials returns the local node credentials.
 func (i *Service) Credentials() Credentials {
 	return i.creds
 }
 
-// LoadLocalCredentials loads the node's UUID and cryptographic keys from disk, generating them if missing.
 func LoadLocalCredentials() (Credentials, error) {
 	id, err := InitUUID()
 	if err != nil {
@@ -46,7 +43,6 @@ func LoadLocalCredentials() (Credentials, error) {
 	return Credentials{ID: id, PrivKey: priv, PubKey: pub}, nil
 }
 
-// InitUUID loads or generates a persistent UUID stored in ~/.lnn/uuid.
 func InitUUID() (uuid.UUID, error) {
 	var id uuid.UUID
 	dir, err := config.DataDir()
@@ -54,7 +50,7 @@ func InitUUID() (uuid.UUID, error) {
 		return id, fmt.Errorf("failed to get data dir: %w", err)
 	}
 	path := filepath.Join(dir, "uuid")
-	// 0700: the directory holds private key material and must not be readable by other users.
+	// 0700: the directory holds private key material.
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return id, fmt.Errorf("failed to create dir: %w", err)
 	}
@@ -78,7 +74,6 @@ func InitUUID() (uuid.UUID, error) {
 	return id, fmt.Errorf("unexpected error: %w", err)
 }
 
-// InitKeys loads or generates a persistent Ed25519 keypair stored in ~/.lnn/.
 func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 	dir, err := config.DataDir()
 	if err != nil {
@@ -101,7 +96,7 @@ func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 		if err := os.WriteFile(privPath, priv, 0600); err != nil {
 			return nil, nil, fmt.Errorf("failed to save private key: %w", err)
 		}
-		// Base64 so the public key file is human-readable and easy to share or inspect.
+		// Base64 so the public key is easy to share and inspect.
 		pubBase64 := base64.StdEncoding.EncodeToString(pub)
 		// 0644: public key can be world-readable by design.
 		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0644); err != nil {

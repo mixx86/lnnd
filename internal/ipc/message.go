@@ -4,16 +4,14 @@ import (
 	"encoding/json"
 )
 
-// Request represents an IPC request message.
 type Request struct {
-	Op   string `json:"op"`   // Operation type (e.g., "link")
-	Type string `json:"type"` // Link type (e.g., "sym", "hard")
-	Src  string `json:"src"`  // Source path in IP://path format
-	Dst  string `json:"dst"`  // Destination path
-	IP   string `json:"-"`    // Extracted from Src by Validate; omitted from JSON since it is derived, not provided separately.
+	Op   string `json:"op"`
+	Type string `json:"type"`
+	Src  string `json:"src"` // <ip>://<path> until Validate splits it
+	Dst  string `json:"dst"`
+	IP   string `json:"-"` // Derived by Validate; never taken from the client
 }
 
-// Response represents an IPC response message.
 type Response struct {
 	OK  bool   `json:"ok"`
 	Err string `json:"err,omitempty"`
@@ -23,7 +21,6 @@ func (r Response) Encode() ([]byte, error) {
 	return json.Marshal(r)
 }
 
-// ParseRequest deserializes a JSON request from bytes.
 func ParseRequest(data []byte) (Request, error) {
 	var req Request
 	err := json.Unmarshal(data, &req)
