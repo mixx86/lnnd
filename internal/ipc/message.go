@@ -15,8 +15,12 @@ type Request struct {
 
 // Response represents an IPC response message.
 type Response struct {
-	Status string `json:"status"` // Status code or message
-	Msg    string `json:"msg"`    // Human-readable message
+	OK  bool   `json:"ok"`
+	Err string `json:"err,omitempty"`
+}
+
+func (r Response) Encode() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 // ParseRequest deserializes a JSON request from bytes.

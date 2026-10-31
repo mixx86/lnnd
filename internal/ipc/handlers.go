@@ -2,7 +2,13 @@
 package ipc
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	app "lnn/internal"
+	"lnn/internal/config"
+	"lnn/internal/network"
+	"lnn/internal/protocol"
 	"log"
 	"net"
 	"path"
@@ -10,9 +16,7 @@ import (
 )
 
 // Validate checks and normalizes an IPC request.
-// Expects Src in "IP://path" format; extracts the IP into req.IP and
-// cleans the path component. Returns an error if the format is invalid
-// or the IP address cannot be parsed.
+// Expects Src in "IP://path" format; extracts the IP and cleans the path component.
 func Validate(req *Request) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
@@ -21,7 +25,7 @@ func Validate(req *Request) error {
 		return errors.New("expected IP")
 	}
 	parts := strings.SplitN(req.Src, "://", 2)
-	cleanPath := path.Clean(parts[1])
+	cleanPath := path.Clean("/" + parts[1])
 
 	ip := net.ParseIP(parts[0])
 	if ip == nil {
@@ -29,13 +33,12 @@ func Validate(req *Request) error {
 	}
 	req.IP = parts[0]
 
-	req.Src = parts[0] + "://" + cleanPath
+	req.Src = cleanPath
 	return nil
 }
 
 // HandleRequest dispatches an incoming IPC request to the appropriate handler.
-// Validates the request before dispatching; unknown operations and types are logged and dropped.
-func HandleRequest(req *Request) {
+func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 	switch req.Op {
 	case "link":
 		if err := Validate(req); err != nil {
@@ -43,8 +46,78 @@ func HandleRequest(req *Request) {
 			return
 		}
 		switch req.Type {
-		case "sym":
-			log.Printf("Type: %v.\n", req.Type)
+		case "symreq":
+			transport, err := network.NewTransport(
+				config.DefaultNetworkConfig(),
+			)
+			if err != nil {
+				bytes, err := Response{
+					OK:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return
+			}
+			conn, err := transport.Dial(context.Background(), req.IP)
+			if err != nil {
+				bytes, err := Response{
+					OK:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return
+			}
+			session, err := network.OutboundHandshake(
+				conn,
+				s.Identity,
+				s.Session,
+			)
+			if err != nil {
+				bytes, err := Response{
+					OK:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return
+			}
+
+			fmt.Printf("%v", req.Src)
+			err = network.SendFrame(session, protocol.Frame{
+				Body: protocol.SymlinkRequest{
+					Src: req.Src,
+					Dst: req.Dst,
+				},
+			})
+			if err != nil {
+				return
+			}
+
+			bytes, err := Response{OK: true, Err: ""}.Encode()
+			if err != nil {
+				return
+			}
+			_, err = unixConn.Write(bytes)
+			if err != nil {
+				return
+			}
 		case "hard":
 			log.Printf("Type: %v.\n", req.Type)
 		default:

@@ -1,11 +1,6 @@
 // Package protocol implements the LNN wire protocol messages and encoding.
 package protocol
 
-import (
-	"encoding/binary"
-	"errors"
-)
-
 const (
 	UUIDSize      = 16
 	PublicKeySize = 32
@@ -16,74 +11,59 @@ const (
 const ChallengePayloadSize uint32 = 32
 
 // ChallengeMessage contains a cryptographic nonce for peer authentication.
-type ChallengeMessage struct {
-	Nonce [32]byte
+type Challenge struct {
+	Nonce [ChallengePayloadSize]byte
 }
 
 // Encode serializes the challenge message into wire format.
-func (m ChallengeMessage) Encode() ([]byte, error) {
-	return EncodeChallenge(m.Nonce), nil
+func (c Challenge) Encode() []byte {
+	return EncodeChallenge(c.Nonce)
+}
+
+func EncodeChallenge(nonce [NonceSize]byte) []byte {
+	payload := make([]byte, ChallengePayloadSize)
+	copy(payload, nonce[:])
+	return payload
 }
 
 // ParseChallenge deserializes a challenge message from raw bytes.
-func ParseChallenge(payload []byte) (ChallengeMessage, error) {
-	if len(payload) != int(ChallengePayloadSize) {
-		return ChallengeMessage{}, errors.New("invalid payload size")
-	}
-	var parsedPayload ChallengeMessage
+func ParseChallenge(payload []byte) (Challenge, error) {
+	var parsedPayload Challenge
 	copy(parsedPayload.Nonce[:], payload)
-
 	return parsedPayload, nil
 }
 
-// EncodeChallenge constructs a complete challenge message packet.
-func EncodeChallenge(nonce [NonceSize]byte) []byte {
-	packet := make([]byte, HeaderSize+ChallengePayloadSize)
-
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgChallenge
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ChallengePayloadSize)
-
-	copy(packet[OffsetBody:], nonce[:])
-
-	return packet
-}
+func (Challenge) Type() MsgType { return MsgChallenge }
+func (Challenge) Size() uint32  { return ChallengePayloadSize }
 
 // ChallengeRespPayloadSize is the size in bytes of a challenge response (Ed25519 signature).
 const ChallengeRespPayloadSize uint32 = 64
 
 // ChallengeRespMessage contains a signature over the received nonce.
-type ChallengeRespMessage struct {
+type ChallengeResp struct {
 	Signature [ChallengeRespPayloadSize]byte
 }
 
 // Encode serializes the challenge response message into wire format.
-func (m ChallengeRespMessage) Encode() ([]byte, error) {
-	return EncodeChallengeResp(m.Signature), nil
+func (c ChallengeResp) Encode() []byte {
+	return EncodeChallengeResp(c.Signature)
 }
 
 // EncodeChallengeResp constructs a complete challenge response message packet.
 func EncodeChallengeResp(sig [ChallengeRespPayloadSize]byte) []byte {
-	packet := make([]byte, HeaderSize+ChallengeRespPayloadSize)
+	packet := make([]byte, ChallengeRespPayloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgChallengeResp
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ChallengeRespPayloadSize)
-
-	copy(packet[OffsetBody:], sig[:])
+	copy(packet[:], sig[:])
 
 	return packet
 }
 
 // ParseChallengeResp deserializes a challenge response message from raw bytes.
-func ParseChallengeResp(payload []byte) (ChallengeRespMessage, error) {
-	if len(payload) != int(ChallengeRespPayloadSize) {
-		return ChallengeRespMessage{}, errors.New("invalid payload size")
-	}
-	var parsedPayload ChallengeRespMessage
+func ParseChallengeResp(payload []byte) (ChallengeResp, error) {
+	var parsedPayload ChallengeResp
 	copy(parsedPayload.Signature[:], payload)
-
 	return parsedPayload, nil
 }
+
+func (ChallengeResp) Type() MsgType { return MsgChallengeResp }
+func (ChallengeResp) Size() uint32  { return ChallengeRespPayloadSize }

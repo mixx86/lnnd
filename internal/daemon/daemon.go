@@ -1,46 +1,82 @@
-// Package daemon implements the main LNN daemon orchestration.
 package daemon
 
 import (
+	"fmt"
+
+	app "lnn/internal"
+	"lnn/internal/config"
 	"lnn/internal/identity"
+	"lnn/internal/logger"
+	"lnn/internal/sched"
+	"lnn/internal/store"
+
 	"lnn/internal/ipc"
 	"lnn/internal/network"
 	"lnn/internal/peer"
-	"log"
 )
 
-// Daemon represents the main LNN daemon instance.
 type Daemon struct {
-	Identity *identity.IdentityService
-	Peers    *peer.PeerManager
+	app.Services
 }
 
-// New creates and initializes a new Daemon instance.
 func New() (*Daemon, error) {
-	identitySvc, err := identity.NewService()
+	identityService, err := identity.NewService()
 	if err != nil {
 		return nil, err
 	}
 
-	peerMgr := peer.NewPeerManager()
+	sessionMgr := peer.NewSessionManager()
+
+	// A wrong guess only costs adaptive throttling, so the daemon keeps
+	// running without disk monitoring instead of refusing to start.
+	diskDevice, err := config.DiskDevice()
+	if err != nil {
+		logger.Daemon.Printf("disk monitoring disabled: %v", err)
+	} else {
+		logger.Daemon.Printf("monitoring disk load on %s", diskDevice)
+	}
+	schedService := sched.NewService(diskDevice)
+
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data dir: %w", err)
+	}
 
 	return &Daemon{
-		Identity: identitySvc,
-		Peers:    peerMgr,
+		Services: app.Services{
+			Identity: identityService,
+			Session:  sessionMgr,
+			Sched:    schedService,
+			Writers: &store.Writers{
+				*store.NewRequestsWriter(dataDir, sessionMgr),
+			},
+		},
 	}, nil
 }
 
-// Start launches all daemon services and blocks until the IPC listener exits.
-// Both listeners block indefinitely, so TCP runs in a background goroutine
-// while IPC holds the calling goroutine — this keeps the process alive.
 func (d *Daemon) Start() error {
-	log.Println("Starting lnnd...")
+	logger.Daemon.Println("Starting lnnd...")
+
+	go d.Sched.Run()
+	go d.Writers.Run(d.Sched)
+
+	cfg := config.DefaultNetworkConfig()
+	transport, err := network.NewTransport(cfg)
+	if err != nil {
+		logger.Daemon.Fatalf("error: %v", err)
+	}
+
+	server := network.NewServer(
+		transport,
+		d.Services.Session,
+		d.Services.Sched,
+		d.Services.Identity,
+	)
 
 	go func() {
-		// TCP bind failure is fatal: the daemon cannot accept peer connections without it.
-		if err := network.ListenTCP(d.Identity, d.Peers); err != nil {
-			log.Fatalf("TCP listener failed to start: %v", err)
+		if err := server.Listen(); err != nil {
+			logger.Daemon.Fatalf("Listener failed to start: %v", err)
 		}
 	}()
-	return ipc.ListenIPC()
+	return ipc.ListenIPC(d.Services)
 }

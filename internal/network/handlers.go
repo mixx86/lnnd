@@ -1,43 +1,48 @@
-// Package network handles TCP connections and protocol handshakes.
 package network
 
 import (
+	"errors"
 	"fmt"
+	"net"
+	"time"
+
 	"lnn/internal/identity"
 	"lnn/internal/logger"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
-	"net"
-	"time"
+	"lnn/internal/sched"
 )
 
-// HandleConnTCP manages a single incoming TCP connection from handshake to close.
-// Enforces a 5-second deadline on the handshake phase to prevent a slow or malicious
-// client from holding the goroutine open indefinitely before authenticating.
-func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerManager) {
+func HandleConn(
+	conn net.Conn,
+	transport Transport,
+	sm *peer.SessionManager,
+	schedService *sched.Service,
+	idService *identity.Service,
+) {
 	defer func() {
 		if err := conn.Close(); err != nil {
-			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
+			logger.Daemon.Printf(
+				"Error closing connection %s: %v",
+				conn.RemoteAddr(),
+				err,
+			)
 		}
 	}()
-	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		// Keepalive lets the OS detect dead connections without application-level heartbeats.
-		// Failure is non-fatal: the connection still works, we just lose dead-peer detection.
-		if err := tcpConn.SetKeepAlive(true); err != nil {
-			logger.Daemon.Printf("Couldn't activate KeepAlive in %s: %v", conn.RemoteAddr(), err)
+	if keepAlive, ok := transport.(interface {
+		ConfigureKeepAlive(net.Conn) error
+	}); ok {
+		if err := keepAlive.ConfigureKeepAlive(conn); err != nil {
+			logger.Daemon.Printf("Error configuring KeepAlive: %v", err)
+			conn.Close()
 		}
-		if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
-			logger.Daemon.Printf("Couldn't set KeepAlive period in %s: %v", conn.RemoteAddr(), err)
-		}
-	} else {
-		logger.Daemon.Printf("Couldn't activate KeepAlive in %s", conn.RemoteAddr())
 	}
 
 	if conn.SetDeadline(time.Now().Add(5*time.Second)) != nil {
 		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
 		return
 	}
-	p, err := InBoundHandshake(conn, i, pm)
+	p, err := InboundHandshake(conn, idService, sm)
 	if err != nil {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
@@ -48,12 +53,12 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 	}
 
 	for {
-		msg, err := ReceiveTCP(conn)
+		msg, err := ReadFrame(conn)
 		if err != nil {
-			logger.Daemon.Printf("Error receving TCP packets: %v", err)
+			logger.Daemon.Printf("Error receiving packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, p)
+		err = HandleTCPMessage(conn, msg, p, schedService)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
 			return
@@ -61,27 +66,64 @@ func HandleConnTCP(conn net.Conn, i *identity.IdentityService, pm *peer.PeerMana
 	}
 }
 
-// HandleTCPMessage processes application-layer messages for peers that have
-// successfully completed the handshake (StateVerified).
-// It assumes the peer state has already been validated by the routing layer
-// and does not handle handshake or pre-verification messages.
-func HandleTCPMessage(conn net.Conn, msg protocol.Message, p *peer.Peer) error {
-	switch m := msg.(type) {
-	case protocol.HelloMessage, protocol.ChallengeMessage, protocol.ChallengeRespMessage:
-		SendTCP(p, protocol.ErrorMessage{
-			Code:    protocol.ErrInvalidState,
-			Message: protocol.MsgErrInvalidState,
-		})
-		return fmt.Errorf("handshake message received in state %v from peer %v", p.State, p.ID)
+func HandleTCPMessage(
+	conn net.Conn,
+	msg protocol.Frame,
+	s *peer.Session,
+	sc *sched.Service,
+) error {
+	switch m := msg.Body.(type) {
+	case protocol.OK:
+		return nil
+	case protocol.Error:
+		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
-	case protocol.ErrorMessage:
-		return fmt.Errorf("peer %v error %d: %s", p.ID, m.Code, m.Message)
+	case protocol.SymlinkRequest:
+		ibrequest, ok := msg.Body.(protocol.InboundRequest)
+		if !ok {
+			return fmt.Errorf("error parsing the inbound request.\n")
+		}
+		go func() {
+			err := sc.SubmitRequest(s.Remote, ibrequest, msg.Header.Tag)
+
+			if err != nil {
+				if errors.Is(err, sched.ErrRequestsQueueFull) {
+					SendFrame(s, protocol.Frame{
+						Body: protocol.Error{
+							Code:    protocol.ErrOverloaded,
+							Message: protocol.MsgErrOverloaded,
+						},
+					}.WithTag(msg.Header.Tag))
+				}
+				SendFrame(s, protocol.Frame{
+					Body: protocol.Error{
+						Code:    protocol.ErrInternal,
+						Message: protocol.MsgErrInternal,
+					},
+				}.WithTag(msg.Header.Tag))
+			}
+			SendFrame(s, protocol.Frame{
+				Body: protocol.OK{},
+			}.WithTag(msg.Header.Tag))
+		}()
+		return nil
+
+	case protocol.Hello, protocol.Challenge, protocol.ChallengeResp:
+		SendFrame(s, protocol.Frame{
+			Body: protocol.Error{
+				Code:    protocol.ErrInvalidState,
+				Message: protocol.MsgErrInvalidState,
+			},
+		}.WithTag(msg.Header.Tag))
+		return fmt.Errorf("handshake message received in state %v from peer %v", s.State, s.Remote.ID)
 
 	default:
-		SendTCP(p, protocol.ErrorMessage{
-			Code:    protocol.ErrInvalidMessage,
-			Message: protocol.MsgErrInvalidMessage,
+		SendFrame(s, protocol.Frame{
+			Body: protocol.Error{
+				Code:    protocol.ErrInvalidMessage,
+				Message: protocol.MsgErrInvalidMessage,
+			},
 		})
-		return fmt.Errorf("unknown message type from peer %v", p.ID)
+		return fmt.Errorf("unknown message type from peer %v", s.Remote.ID)
 	}
 }

@@ -1,117 +1,91 @@
-# lnn
+# lnnd
 
-**lnn** extends the Unix `ln` command with network capabilities — create persistent links to files on remote machines as if they were local.
+**lnnd** is the background daemon of [lnn](https://github.com/mixx86/lnn) (**LiNk + Networks**) — Unix `ln` extended with network capabilities. It manages peer connections, speaks **LNNP** (the *LiNk + Networks Protocol*), persists incoming link requests and schedules disk writes.
 
-> Work in progress — core protocol implemented, link operations in development.
+Users interact with lnn through the [`lnn`](https://github.com/mixx86/lnn) CLI; the CLI sends its requests to lnnd over a local Unix socket.
 
-```bash
-lnn 192.168.1.34://var/log/app.log ./app.log   # symlink to a remote file
-lnn --add-peer 192.168.1.34                   # trust a peer
-lnn --peers                                   # list known peers
-```
+> Work in progress — core protocol, handshake and the durable inbound request pipeline are implemented; link operations are in development.
 
 ## How it works
 
-lnn consists of two components:
+- Listens on a **Unix socket** for requests from the local `lnn` CLI.
+- Handles all **TCP** communication with remote peers, authenticating each one via an **Ed25519 mutual handshake** before exchanging any data.
+- Persists incoming link requests to an on-disk **write-ahead log** before acknowledging them, so they survive crashes and restarts.
+- Runs a **write scheduler** that monitors disk load and applies backpressure to peers when the daemon is overloaded.
 
-- **`lnn`** — CLI client (C). Drop-in replacement for `ln` with network extensions.
-- **`lnnd`** — Background daemon (Go). Manages peer connections, the wire protocol, and link persistence.
-
-The CLI sends requests to the local daemon over a Unix socket. The daemon handles all TCP communication with remote peers, authenticating each one via Ed25519 mutual handshake before exchanging any data.
-
-See [docs/architecture.md](docs/architecture.md) for a full breakdown.
+See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
 ## Build
 
-**Requirements:** GCC, Go 1.21+, Make
+**Requirements:** Go 1.26+
 
 ```bash
-git clone https://github.com/d3xxdev/lnn.git
-cd lnn
-make
+go build -o lnnd ./cmd/lnnd
 ```
 
-## Usage
+## Configuration
 
-### Remote links
+`lnnd` reads `~/.lnn/lnnd.conf` at startup. The file uses `KEY=VALUE` lines; each pair is exported as an environment variable. Lines without `=` are ignored. [`configs/lnnd.conf`](configs/lnnd.conf) is an example to start from:
 
 ```bash
-lnn 192.168.1.34://path/to/file.txt ./local_link    #  explicit hardlink to a remote file
-lnn -s 192.168.1.34://path/to/file.txt ./local_link # explicit symlink to a remote file
-lnn 192.168.1.34 ./local_link                      # open request — remote chooses the file
+mkdir -p ~/.lnn && cp configs/lnnd.conf ~/.lnn/lnnd.conf
 ```
 
-### Peer management
+```
+TCP_PORT=7878
+LNND_IPC_SOCKET=/tmp/lnnd.sock
+```
+
+| Variable              | Purpose                                                          | Default |
+|-----------------------|------------------------------------------------------------------|---------|
+| `TCP_PORT`            | Port for the TCP peer listener                                   | —       |
+| `LNND_IPC_SOCKET`     | Path to the Unix IPC socket                                      | —       |
+| `LNND_REQ_QUEUE_SIZE` | Capacity of the inbound requests queue (1–65534)                 | `4096`  |
+| `LNND_MAX_MEM`        | Memory limit; plain bytes or with a `KB`/`MB`/`GB` suffix        | `64MB`  |
+| `LNND_DISK_DEVICE`    | Block device whose load drives the write scheduler (`nvme0n1`, `/dev/sda`, …) | device holding the `lnnd` executable, else `~/.lnn` |
+| `QUIC_PORT`           | Reserved for the upcoming QUIC transport (not used yet)          | —       |
+
+## Running
 
 ```bash
-lnn --add-peer 192.168.1.34                      # add peer using default trusted template
-lnn --add-peer 192.168.1.34 --max                # add peer with max trust (any path)
-lnn --add-peer 192.168.1.34 --template mytempl   # add peer using a custom template
-lnn --peer 192.168.1.34 --allow /path/to/dir     # grant extra path to an existing peer
-lnn --peer 192.168.1.34 --anti-flooding 4hours;3requests  # set rate limit for a peer
-lnn --block 192.168.1.34                         # block a peer
-lnn --peers                                      # list known peers
-lnn --peers 192.168.1.34                         # show peer info, paths, and rate limit
+lnnd    # runs the daemon in the foreground
 ```
 
-```bash
-lnn --remove-peer 192.168.1.34                   # strip all paths (revert to unknown template)
-lnn --remove-peer 192.168.1.34 --template tmpl   # remove only the paths from that template
-lnn --remove-peer 192.168.1.34 /path/to/dir      # remove a single path
-```
+Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, generated on first run) and the request log. See [Storage](docs/architecture.md#storage) and [Identity storage](docs/architecture.md#identity-storage).
 
-Trusted peers can create links directly (no request needed) inside the paths their template grants them. The template is a snapshot — modifying the template later does not change already-added peers. See [docs/architecture.md](docs/architecture.md) for the full permission model.
+## Documentation
 
-### Alerts
-
-```bash
-lnn --alert        # show unread alerts
-lnn --alert all    # show full alert history
-```
-
-Alerts are generated when a peer exceeds their request rate limit or attempts a link to an unauthorized path.
-
-### Incoming requests
-
-```bash
-lnn --requests                       # list pending requests
-lnn --requests all                   # list all requests
-lnn --accept 192.168.1.34:id /path   # accept and resolve a request
-```
-
-### Daemon
-
-```bash
-lnnd start    # start the daemon
-lnnd stop     # stop the daemon
-lnnd status   # show status
-```
-
-### Local (`ln` compatible)
-
-```bash
-lnn file.txt link.txt       # hard link
-lnn -s file.txt link.txt    # symbolic link
-```
+| Document                                   | Contents |
+|--------------------------------------------|----------|
+| [docs/architecture.md](docs/architecture.md) | Package map, startup, request lifecycle, scheduler, storage and crash recovery, configuration |
+| [docs/protocol.md](docs/protocol.md)         | LNNP wire format, message types, error codes, handshake, session states |
+| [docs/ipc.md](docs/ipc.md)                   | The Unix-socket contract used by the CLI |
+| [docs/trust-model.md](docs/trust-model.md)   | Peer permissions, templates, anti-flood rules, alerts *(planned)* |
+| [docs/filesystem.md](docs/filesystem.md)     | How remote links are presented on the local filesystem *(planned)* |
+| [docs/roadmap.md](docs/roadmap.md)           | Planned work, in phases |
+| [docs/coding-style.md](docs/coding-style.md) | Line length, comments and naming rules |
 
 ## Status
 
-| Feature                        | Status      |
-|-------------------------------|-------------|
-| Wire protocol + message types  | Done        |
-| Ed25519 mutual handshake       | Done        |
-| Peer state machine             | Done        |
-| TCP message dispatch loop      | Done        |
-| IPC (CLI ↔ daemon)             | Done        |
-| Remote symlinks                | In progress |
-| Remote hard links              | In progress |
-| Peer management (`--add-peer`) | Planned     |
-| Persistent link database       | Planned     |
-| TLS encryption                 | Planned     |
-| Sync mode (`--sync`)           | Planned     |
-| Smart links                    | Planned     |
-
-Full roadmap: [docs/roadmap.md](docs/roadmap.md)
+| Feature                                      | Status      |
+|----------------------------------------------|-------------|
+| Wire protocol + tagged message frames        | Done        |
+| Ed25519 mutual handshake                     | Done        |
+| TCP message dispatch loop                    | Done        |
+| IPC (CLI ↔ daemon)                           | Done        |
+| Inbound request queue + write scheduler      | In progress |
+| Durable request log (WAL) + crash recovery   | In progress |
+| Session state machine                        | In progress |
+| Remote symlinks                              | In progress |
+| Remote hard links                            | In progress |
+| Request resolution (accept / reject)         | In progress |
+| Peer management + trust model                | Planned     |
+| Persistent link database                     | Planned     |
+| FUSE filesystem presentation                 | Planned     |
+| QUIC transport                               | Planned     |
+| TLS encryption                               | Planned     |
+| Sync mode                                    | Planned     |
+| Smart links                                  | Planned     |
 
 ## License
 

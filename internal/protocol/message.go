@@ -7,58 +7,103 @@ import (
 )
 
 // Message types for the LNN protocol.
+type MsgType uint16
+
 const (
-	MsgHello           uint8 = 0 // Initial peer identification
-	MsgChallenge       uint8 = 1 // Authentication challenge
-	MsgChallengeResp   uint8 = 2 // Challenge response with signature
-	MsgError           uint8 = 3 // Error notification
-	MsgLinkSym         uint8 = 4 // Symbolic link operation
-	MsgLinkHard        uint8 = 5 // Hard link operation
-	MsgLinkSymRequest  uint8 = 6 // Request to create symbolic link
-	MsgLinkHardRequest uint8 = 7 // Request to create hard link
-	MsgOk              uint8 = 8 // Success acknowledgment
+	MsgHello MsgType = iota
+	MsgChallenge
+	MsgChallengeResp
+	MsgError
+	// TODO: change name to MsgSymlink
+	MsgLinkSym
+	MsgLinkHard
+	MsgSymlinkRequest
+	MsgHardLinkRequest
+	MsgOk
+	MsgRecoverRequest
+	MsgResolution
 )
 
-// Message is the interface for all protocol messages.
-type Message interface {
-	Encode() ([]byte, error)
+type Frame struct {
+	Header Header
+	Body   Payload
 }
 
-// Header represents the fixed-size protocol header.
-// Layout:
-// [0-3] Magic
-// [4]   Version
-// [5]   Type
-// [6-9] PayloadLength
+func (m Frame) Encode() []byte {
+	packet := m.Header.Encode(m.Body.Type(), m.Body.Size())
+	packet = append(packet, m.Body.Encode()...)
+	return packet
+}
+
+func (m Frame) WithTag(tag uint16) Frame {
+	m.Header.Tag = tag
+	return m
+}
+
+func (h Header) Encode(msgType MsgType, payloadLen uint32) []byte {
+	buf := make([]byte, HeaderSize)
+	copy(buf[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
+	buf[OffsetVersion] = protocolVersion
+	buf[OffsetType] = byte(msgType)
+	binary.BigEndian.PutUint16(buf[OffsetTag:OffsetTag+TagSize], h.Tag)
+	binary.BigEndian.PutUint32(buf[OffsetLen:OffsetLen+LenSize], payloadLen)
+	return buf
+}
+
+type Payload interface {
+	Encode() []byte
+	Type() MsgType
+	Size() uint32
+}
+
+type InboundRequest interface {
+	Payload
+	inboundRequest()
+}
+
+type OK struct{}
+
+func (OK) Encode() []byte {
+	packet := make([]byte, 0)
+	return packet
+}
+
+func (OK) Type() MsgType {
+	return MsgOk
+}
+
+func (OK) Size() uint32 {
+	return 0
+}
+
 type Header struct {
 	Magic         [4]byte
 	Version       uint8
-	Type          uint8
+	Type          MsgType
+	Tag           uint16
 	PayloadLength uint32
 }
 
-// Header field sizes and offsets.
 const (
 	MagicSize   = 4
 	VersionSize = 1
 	TypeSize    = 1
+	TagSize     = 2
 	LenSize     = 4
 
 	OffsetMagic   = 0
 	OffsetVersion = 4
 	OffsetType    = 5
-	OffsetLen     = 6
-	OffsetBody    = 10
+	OffsetTag     = 6
+	OffsetLen     = 8
+	OffsetBody    = 12
 )
-const HeaderSize = MagicSize + VersionSize + TypeSize + LenSize
+const HeaderSize = MagicSize + VersionSize + TypeSize + TagSize + LenSize
 
 var protocolMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
 
 const protocolVersion uint8 = 0x01
 
-// ReadHeader reads and validates a fixed-size protocol header from r.
-// Returns an error if the magic bytes do not match (non-LNN traffic) or
-// if the version is unsupported, so callers can reject bad connections early.
 func ReadHeader(r io.Reader) (Header, error) {
 	var header Header
 	headerBuf := make([]byte, HeaderSize)
@@ -67,18 +112,20 @@ func ReadHeader(r io.Reader) (Header, error) {
 		return header, err
 	}
 
-	copy(header.Magic[:], headerBuf[0:4])
-	header.Version = headerBuf[4]
-	header.Type = headerBuf[5]
-	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[6:10])
+	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
+	header.Version = headerBuf[OffsetVersion]
+	header.Type = MsgType(headerBuf[OffsetType])
+	header.Tag = binary.BigEndian.Uint16(
+		headerBuf[OffsetTag : OffsetTag+TagSize],
+	)
+	header.PayloadLength = binary.BigEndian.Uint32(
+		headerBuf[OffsetLen : OffsetLen+LenSize],
+	)
 
-	// Reject non-LNN traffic before consuming any more of the stream.
-	var expectedMagic = [4]byte{0x4C, 0x4E, 0x4E, 0x00}
-	if header.Magic != expectedMagic {
+	if header.Magic != [4]byte{0x4C, 0x4E, 0x4E, 0x00} {
 		return header, errors.New("invalid magic")
 	}
 
-	// Reject connections from incompatible protocol versions before parsing the body.
 	if header.Version != 0x01 {
 		return header, errors.New("unsupported version")
 	}

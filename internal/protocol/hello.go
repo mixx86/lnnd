@@ -2,8 +2,6 @@ package protocol
 
 import (
 	"crypto/ed25519"
-	"encoding/binary"
-	"errors"
 
 	"github.com/google/uuid"
 )
@@ -11,52 +9,45 @@ import (
 // HelloPayloadSize is the size in bytes of a hello message payload (UUID + public key).
 const HelloPayloadSize uint32 = 48
 
-// HelloMessage contains peer identification information.
-type HelloMessage struct {
-	ID        uuid.UUID         // Peer's unique identifier
-	PublicKey ed25519.PublicKey // Peer's public key
+// Hello contains peer identification information.
+type Hello struct {
+	ID        uuid.UUID
+	PublicKey ed25519.PublicKey
 }
 
-// EncodeHello constructs a complete hello message packet.
 func EncodeHello(id uuid.UUID, pubKey ed25519.PublicKey) []byte {
-	packet := make([]byte, HeaderSize+HelloPayloadSize)
-
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgHello
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], HelloPayloadSize)
-
-	cursor := OffsetBody
-	copy(packet[cursor:cursor+UUIDSize], id[:])
-	cursor += UUIDSize
-	copy(packet[cursor:cursor+PublicKeySize], pubKey)
-	// cursor += PublicKeySize <- can be ommited (last field)
-
+	packet := make([]byte, HelloPayloadSize)
+	copy(packet[:UUIDSize], id[:])
+	copy(packet[UUIDSize:UUIDSize+PublicKeySize], pubKey)
 	return packet
 }
 
 // Encode serializes the hello message into wire format.
-func (m HelloMessage) Encode() ([]byte, error) {
-	return EncodeHello(m.ID, m.PublicKey), nil
+func (m Hello) Encode() []byte {
+	return EncodeHello(m.ID, m.PublicKey)
+}
+
+func (Hello) Type() MsgType {
+	return MsgHello
+}
+
+func (Hello) Size() uint32 {
+	return HelloPayloadSize
 }
 
 // ParseHello deserializes a hello message from raw bytes.
-func ParseHello(payload []byte) (HelloMessage, error) {
-	if len(payload) != int(HelloPayloadSize) {
-		return HelloMessage{}, errors.New("invalid payload size")
-	}
-	var parsedPayload HelloMessage
+func ParseHello(payload []byte) (Hello, error) {
+	var parsedPayload Hello
 	cursor := 0
 
 	parsedID, err := uuid.FromBytes(payload[cursor : cursor+UUIDSize])
 	if err != nil {
-		return HelloMessage{}, err
+		return Hello{}, err
 	}
 	cursor += UUIDSize
 
 	pubKey := make(ed25519.PublicKey, PublicKeySize)
 	copy(pubKey, payload[cursor:cursor+PublicKeySize])
-	// cursor += PublicKeySize <- can be ommited (last field)
 
 	parsedPayload.ID = parsedID
 	parsedPayload.PublicKey = pubKey

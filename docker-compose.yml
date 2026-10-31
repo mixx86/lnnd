@@ -5,7 +5,7 @@ services:
       - "5771:5771"
     volumes:
       - lnn-identity:/root/.lnn
-      - /tmp:/tmp                  # IPC socket — shared with host CLI
+      - /tmp:/tmp 
 
 volumes:
   lnn-identity:

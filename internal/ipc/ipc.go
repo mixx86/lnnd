@@ -2,14 +2,13 @@ package ipc
 
 import (
 	"io"
+	app "lnn/internal"
 	"log"
 	"net"
 	"os"
 )
 
-// HandleConnUNIX reads a single request from conn, dispatches it, and closes the connection.
-// Each CLI invocation opens a new connection, so the lifetime is one request per connection.
-func HandleConnUNIX(conn net.Conn) {
+func HandleConn(conn net.Conn, s app.Services) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			log.Printf("Error closing IPC connection: %v", err)
@@ -25,16 +24,11 @@ func HandleConnUNIX(conn net.Conn) {
 		log.Printf("Error deserializing json data: %v", err)
 		return
 	}
-	HandleRequest(&req)
+	HandleRequest(&req, conn, s)
 }
 
-// ListenIPC starts the Unix socket listener for IPC communication.
-// Reads the socket path from LNND_IPC_SOCKET environment variable.
-// This function blocks indefinitely.
-func ListenIPC() error {
+func ListenIPC(s app.Services) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
-	// Remove any stale socket file left by a previous unclean shutdown; net.Listen would
-	// fail with "address already in use" otherwise even though nothing is listening.
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: could not remove socket file %s: %v", path, err)
 	}
@@ -48,6 +42,6 @@ func ListenIPC() error {
 			log.Printf("Error accepting IPC connection: %v", err)
 			continue
 		}
-		go HandleConnUNIX(conn)
+		go HandleConn(conn, s)
 	}
 }

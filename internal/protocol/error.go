@@ -12,56 +12,60 @@ const (
 )
 
 // ErrorMessage signals a protocol error to the remote peer.
-type ErrorMessage struct {
+type Error struct {
 	Code    int64
 	Message string
 }
 
 // EncodeErrorMessage constructs a complete error message packet.
 // Payload layout: [code:8][message:35]
-func EncodeErrorMessage(code int64, message string) []byte {
+func EncodeError(code int64, message string) []byte {
 	packet := make([]byte, HeaderSize+ErrorMessagePayloadSize)
 
-	copy(packet[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
-	packet[OffsetVersion] = protocolVersion
-	packet[OffsetType] = MsgError
-	binary.BigEndian.PutUint32(packet[OffsetLen:OffsetBody], ErrorMessagePayloadSize)
-
-	binary.BigEndian.PutUint64(packet[OffsetBody:], uint64(code))
-	copy(packet[OffsetBody+CodeErrorMessageSize:], message)
+	binary.BigEndian.PutUint64(packet[:], uint64(code))
+	copy(packet[CodeErrorMessageSize:], message)
 
 	return packet
 }
 
 // Encode serializes the error message into wire format.
-func (m ErrorMessage) Encode() ([]byte, error) {
-	return EncodeErrorMessage(m.Code, m.Message), nil
+func (e Error) Encode() []byte {
+	return EncodeError(e.Code, e.Message)
 }
 
 // ParseError deserializes an error message from raw bytes.
-func ParseError(payload []byte) (ErrorMessage, error) {
+func ParseError(payload []byte) (Error, error) {
 	if len(payload) != ErrorMessagePayloadSize {
-		return ErrorMessage{}, errors.New("invalid payload size")
+		return Error{}, errors.New("invalid payload size")
 	}
 	code := int64(binary.BigEndian.Uint64(payload[:CodeErrorMessageSize]))
 	raw := payload[CodeErrorMessageSize:]
 	n := 0
-	// The message field is zero-padded to a fixed size on the wire; scan to the first
-	// null byte to recover the original string without trailing garbage.
+	// Message field is zero-padded on the wire; stop at the first null byte.
 	for n < ErrorMessageSize && raw[n] != 0 {
 		n++
 	}
-	return ErrorMessage{Code: code, Message: string(raw[:n])}, nil
+	return Error{Code: code, Message: string(raw[:n])}, nil
 }
 
-// Error code constants.
+func (Error) Type() MsgType { return MsgError }
+func (Error) Size() uint32  { return ErrorMessageSize }
+
 const (
-	ErrInvalidMessage int64 = -1
-	ErrInvalidState   int64 = -2
+	ErrInvalidMessage  int64 = -1
+	ErrInvalidState    int64 = -2
+	ErrRequestRejected int64 = -3
+	ErrOverloaded      int64 = -4
+	ErrTooManyPending  int64 = -5
+	ErrPendingTimeout  int64 = -6
+	ErrInternal        int64 = -7
 )
 
-// Error message string constants.
 const (
-	MsgErrInvalidMessage = "Invalid message."
-	MsgErrInvalidState   = "Invalid state."
+	MsgErrInvalidMessage  = "Invalid message."
+	MsgErrInvalidState    = "Invalid state."
+	MsgErrRequestRejected = "Request rejected."
+	MsgErrOverloaded      = "Daemon overloaded."
+	MsgErrPendingTimeout  = "Timed out waiting for a response."
+	MsgErrInternal        = "Internal error."
 )

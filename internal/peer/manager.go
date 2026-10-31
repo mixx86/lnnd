@@ -5,34 +5,30 @@ import (
 	"github.com/google/uuid"
 )
 
-// NewPeerManager creates a new PeerManager instance.
-func NewPeerManager() *PeerManager {
-	return &PeerManager{
-		peers: make(map[uuid.UUID]*Peer),
+func NewSessionManager() *SessionManager {
+	return &SessionManager{
+		sessions: make(map[uuid.UUID]*Session),
 	}
 }
 
-// Register adds or replaces a peer in the registry.
-// If a peer with the same ID already exists it is silently overwritten,
-// which is the correct behavior when a peer reconnects.
-func (pm *PeerManager) Register(p *Peer) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	pm.peers[p.ID] = p
+// Register adds or replaces a session. Silent overwrite is correct on reconnect.
+func (sm *SessionManager) Register(s *Session) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.sessions[s.Remote.ID] = s
 }
 
-// Get retrieves a peer connection by ID.
-// Returns the peer and true if found, nil and false otherwise.
-func (pm *PeerManager) Get(id uuid.UUID) (*Peer, bool) {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	p, ok := pm.peers[id]
-	return p, ok
+// Get retrieves a session connection by ID. Returns nil, false if not found.
+func (sm *SessionManager) Get(id uuid.UUID) (*Session, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	s, ok := sm.sessions[id]
+	return s, ok
 }
 
-// Remove deletes a peer connection from the manager.
-func (pm *PeerManager) Remove(id uuid.UUID) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	delete(pm.peers, id)
+// Remove deletes a session connection from the manager.
+func (sm *SessionManager) Remove(id uuid.UUID) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	delete(sm.sessions, id)
 }

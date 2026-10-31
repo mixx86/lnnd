@@ -1,0 +1,91 @@
+package sched
+
+import (
+	"lnn/internal/queues"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+type SourceID uint16
+
+const (
+	RequestsCacheID SourceID = iota
+	RequestsID
+	FilesID
+)
+
+type DiskLoadState uint8
+
+const (
+	DiskLoadNormal DiskLoadState = iota
+	DiskLoadElevated
+	DiskLoadSaturated
+)
+
+type DiskLoadTracker struct {
+	State        DiskLoadState
+	SmoothedUtil float64
+	Initialized  bool
+	HighSince    time.Time
+	LowSince     time.Time
+}
+
+type Writer struct {
+	source         SourceID
+	turn           chan struct{}
+	requestedBytes int64
+	blockedSince   time.Time
+	granted        bool
+	budget         time.Duration
+}
+
+type WriterConfig struct {
+	baseWeight float64
+	weight     float64
+
+	expectedBytes int64
+
+	baseline time.Duration
+	samples  int
+}
+
+type QueuePressure struct {
+	Pressured      atomic.Bool
+	QueuedBytes    atomic.Int64
+	MaxQueuedBytes int64
+}
+
+type Service struct {
+	// Fuck Go for not letting generic Queue[T, U] union cleanly here.
+	// These queues have different concrete T/U types, so the queue map has to
+	// use any even though the queues themselves are strongly typed.
+	queues map[queues.QueueID]any
+
+	sourceQueues  map[SourceID]queues.QueueID
+	queuePressure map[queues.QueueID]QueuePressure
+
+	pressure            map[SourceID]*atomic.Uint32
+	pressureChangeCond  *sync.Cond
+	pressureReleaseCond *sync.Cond
+
+	writeTurnMu   sync.Mutex
+	writeTurnCond *sync.Cond
+
+	// WCB stands for Write Control Block, based on
+	// the same jargon used in OS process schedulers.
+	WCB map[SourceID]*WriterConfig
+
+	waitingWriters []*Writer
+	activeWriters  map[*Writer]struct{}
+
+	maxWriters               int
+	maxWritersElevated       int
+	maxWritersWhenOverloaded int
+
+	diskDevice    string
+	diskLoad      DiskLoadTracker
+	diskTrackerMu sync.Mutex
+
+	schedulerWake chan struct{}
+}
