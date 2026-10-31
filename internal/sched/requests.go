@@ -11,7 +11,7 @@ import (
 func (s *Service) SubmitRequest(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
-	tag uint16,
+	tag uint32,
 ) error {
 	q, ok := s.queues[queues.RequestsQueueID].(*queues.RequestsQueue)
 	if !ok {

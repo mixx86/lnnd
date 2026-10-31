@@ -3,53 +3,29 @@ package store
 import (
 	"encoding/binary"
 	"fmt"
-	"lnn/internal/network"
-	"lnn/internal/protocol"
+	"lnn/internal/recovery"
 	"os"
 )
 
-func (w *RequestsWriter) recoverEntries() error {
-	for _, entry := range w.reqFile.recovery {
-		tag, ok := w.reqCache.GetTag(entry.ReqID)
+// recordRecoveries must run before the damaged region is truncated: once
+// it is gone, the pending list is the only trace of what peers still owe.
+func (w *RequestsWriter) recordRecoveries() error {
+	var entries []recovery.Entry
+	for _, e := range w.reqFile.recovery {
+		tag, ok := w.reqCache.GetTag(e.ReqID)
 		if !ok {
 			continue
 		}
-
-		if err := w.recoverRequest(
-			entry.PeerUUID,
-			entry.ReqID,
-			tag,
-		); err != nil {
-			return fmt.Errorf(
-				"recovering request %d at offset %d: %w",
-				entry.ReqID,
-				entry.Offset,
-				err,
-			)
-		}
+		entries = append(entries, recovery.Entry{
+			Peer:  e.PeerUUID,
+			ReqID: e.ReqID,
+			Tag:   tag,
+		})
 	}
-
-	return nil
-}
-
-func (w *RequestsWriter) recoverRequest(
-	peerUUID [16]byte,
-	reqID uint32,
-	tag uint16,
-) error {
-	s, ok := w.sm.Get(peerUUID)
-	if !ok {
-		return fmt.Errorf("no peer with uuid %v was found", peerUUID)
+	if len(entries) == 0 {
+		return nil
 	}
-
-	err := network.SendFrame(s, protocol.Frame{
-		Body: protocol.RecoverRequest{},
-	}.WithTag(tag))
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return w.pending.Add(entries...)
 }
 
 func (w *RequestsWriter) writeRecoveredRequest(

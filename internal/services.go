@@ -2,7 +2,9 @@ package app
 
 import (
 	"lnn/internal/identity"
+	"lnn/internal/outbox"
 	"lnn/internal/peer"
+	"lnn/internal/recovery"
 	"lnn/internal/sched"
 	"lnn/internal/store"
 )
@@ -12,4 +14,6 @@ type Services struct {
 	Session  *peer.SessionManager
 	Sched    *sched.Service
 	Writers  *store.Writers
+	Outbox   *outbox.Outbox
+	Recovery *recovery.Pending
 }

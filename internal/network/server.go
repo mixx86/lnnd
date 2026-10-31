@@ -3,7 +3,9 @@ package network
 import (
 	"lnn/internal/identity"
 	"lnn/internal/logger"
+	"lnn/internal/outbox"
 	"lnn/internal/peer"
+	"lnn/internal/recovery"
 	"lnn/internal/sched"
 )
 
@@ -13,6 +15,8 @@ type Server struct {
 	Sessions  *peer.SessionManager
 	Scheduler *sched.Service
 	Identity  *identity.Service
+	Outbox    *outbox.Outbox
+	Recovery  *recovery.Pending
 }
 
 func NewServer(
@@ -20,6 +24,8 @@ func NewServer(
 	sm *peer.SessionManager,
 	sched *sched.Service,
 	i *identity.Service,
+	ob *outbox.Outbox,
+	rp *recovery.Pending,
 ) *Server {
 	return &Server{
 		Transport: t,
@@ -27,6 +33,8 @@ func NewServer(
 		Sessions:  sm,
 		Scheduler: sched,
 		Identity:  i,
+		Outbox:    ob,
+		Recovery:  rp,
 	}
 }
 
@@ -44,12 +52,6 @@ func (s *Server) Listen() error {
 			continue
 		}
 
-		go HandleConn(
-			conn,
-			s.Transport,
-			s.Sessions,
-			s.Scheduler,
-			s.Identity,
-		)
+		go HandleConn(conn, s)
 	}
 }

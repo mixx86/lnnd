@@ -40,7 +40,7 @@ func (q *RequestsQueue) Config() *QueueConfig {
 func (q *RequestsQueue) makePending(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
-	tag uint16,
+	tag uint32,
 ) PendingRequest {
 	return PendingRequest{
 		From:       from,
@@ -54,7 +54,7 @@ func (q *RequestsQueue) makePending(
 func (q *RequestsQueue) TryEnqueue(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
-	tag uint16,
+	tag uint32,
 ) (PendingRequest, bool) {
 	pr := q.makePending(from, req, tag)
 	select {
@@ -68,7 +68,7 @@ func (q *RequestsQueue) TryEnqueue(
 func (q *RequestsQueue) TryEnqueueWithTimeout(
 	from *peer.RemoteNode,
 	req protocol.InboundRequest,
-	tag uint16,
+	tag uint32,
 	timeout time.Duration,
 ) (PendingRequest, bool) {
 	pr := q.makePending(from, req, tag)

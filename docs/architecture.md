@@ -43,13 +43,16 @@ internal/
   services.go       Services struct (package app) — the daemon's shared services
   config/           Env file loader, network config, data dir, memory limit parsing
   daemon/           Orchestrator — builds all services and starts them
+  fsutil/           Atomic file replacement (temp file + fsync + rename)
   identity/         Node identity: UUID + Ed25519 keypair (~/.lnn/)
   ipc/              Unix socket listener, JSON request parsing, validation, routing
   logger/           Colored loggers (lnnd / lnnp prefixes)
   network/          Transport abstraction (TCP), listener, framing, handshake, message dispatch
+  outbox/           Sent requests kept per peer until confirmed; per-peer tag counter (~/.lnn/outbox)
   peer/             Session registry, session lifecycle states, pending-message tracking
   protocol/         Wire format: encoding, parsing, constants
   queues/           Bounded in-memory queues for inbound work (requests; files is a placeholder)
+  recovery/         Requests owed by peers after a crash (~/.lnn/requests.recovery)
   sched/            Write scheduler: disk-load monitor, writer turns, backpressure
   store/            Durable storage: requests WAL, requests cache, crash recovery
 ```
@@ -64,10 +67,12 @@ type Services struct {
     Session  *peer.SessionManager
     Sched    *sched.Service
     Writers  *store.Writers
+    Outbox   *outbox.Outbox
+    Recovery *recovery.Pending
 }
 ```
 
-`daemon.Daemon` embeds it. `ipc` consumes `app.Services` without importing `daemon` — `daemon` already imports `ipc` for `Start()`, so importing it back would create a cycle.
+`daemon.Daemon` embeds it. `recovery` is its own package so that `network` (which resolves entries) and `store` (which adds them) do not import each other. `ipc` consumes `app.Services` without importing `daemon` — `daemon` already imports `ipc` for `Start()`, so importing it back would create a cycle.
 
 ### Startup sequence
 
@@ -79,6 +84,8 @@ main()
      ├─ peer.NewSessionManager()            empty session registry
      ├─ config.DiskDevice()                 pick the disk to monitor
      ├─ sched.NewService(device)            scheduler, queues, writer config
+     ├─ outbox.Open()                       replay + compact ~/.lnn/outbox
+     ├─ recovery.Open()                     load pending recoveries
      └─ store.NewRequestsWriter()           open requests WAL + requests cache
  └─ daemon.Start()
      ├─ go Sched.Run()                      disk-load sampler + writer dispatch loop
@@ -153,8 +160,10 @@ When an authenticated peer sends a `SYMLINK_REQUEST`:
 
 ```
 ~/.lnn/
-  requests          write-ahead log of inbound requests (mode 0600)
-  requests.cache    local request id → wire tag map
+  requests            write-ahead log of inbound requests (mode 0600)
+  requests.cache      local request id → wire tag map
+  requests.recovery   requests owed by peers after a crash
+  outbox              sent requests not yet confirmed (see protocol.md#recovery)
 ```
 
 #### Requests WAL (`requests`)
@@ -193,7 +202,7 @@ Every entry starts with `[entry_length:4][op:1]`:
 
 #### Requests cache (`requests.cache`)
 
-Fixed 6-byte slots: `[req_id:4][tag:2]`. It maps each local request id to the tag of the wire message that carried it.
+Fixed 8-byte slots: `[req_id:4][tag:4]`. It maps each local request id to the tag of the wire message that carried it.
 
 The tag is what lets the daemon re-establish a conversation after a crash: if a request entry survives but the exchange with the peer was interrupted, the daemon sends a `RECOVER_REQUEST` carrying that tag so the peer knows which request is meant. The peer's own request id (`rmt_req_id`) is deliberately not used for recovery — after a crash there is no reliable way to know whether it is consistent, up to date, or even exists. `rmt_req_id` is only used to tell the peer whether a request was accepted or rejected.
 
@@ -203,8 +212,10 @@ The tag is what lets the daemon re-establish a conversation after a crash: if a 
 2. **Validation** (`Run` → `checkEntries`): the daemon validates either the tail written after the last checkpoint (entry framing) or, if the file ends at a checkpoint, the region that checkpoint closes (framing + checksum).
 3. **Outcome:**
    - *Valid* — nothing to do.
-   - *Damaged but recoverable* (a request entry still has its peer UUID and request id) — the daemon looks up each request's tag in the cache and sends `RECOVER_REQUEST` to the peer if a session exists.
-   - *Damaged and not recoverable* — `removeTail` truncates everything after the last valid checkpoint; if that checkpoint is itself corrupt, the file is rolled back to the previous one.
+   - *Damaged but recoverable* (a request entry, possibly cut short at the end of the file, still has its peer UUID and request id) — each request's tag is looked up in the cache and the `(peer, req_id, tag)` triple is written to `requests.recovery`. Then the damaged region is truncated as below. See [protocol.md](protocol.md#recovery) for how entries are resolved.
+   - *Damaged* — `removeTail` truncates everything after the last valid checkpoint; if that checkpoint is itself corrupt, the file is rolled back to the previous one.
+
+   A file that only holds the initial checkpoint is valid.
 
 ---
 

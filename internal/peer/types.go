@@ -5,7 +5,6 @@ import (
 	"lnn/internal/protocol"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,7 +40,6 @@ type RemoteNode struct {
 }
 
 type SelfNode struct {
-	Tag       atomic.Uint32
 	PendingMu sync.Mutex
 	Pending   map[uint32]chan protocol.Payload
 }

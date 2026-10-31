@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"lnn/internal/logger"
 
@@ -74,6 +75,11 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 	// The last entry is the last checkpoint. Find the previous
 	// checkpoint so we can validate only the region it closes.
 	previousCheckpoint, err := r.findPreviousCheckpoint(lco)
+	if errors.Is(err, ErrNoPreviousCheckpoint) &&
+		lco == int64(fileHeaderLen) {
+		// Only the initial checkpoint exists: a fresh file.
+		return nil, false
+	}
 	if err != nil {
 		return err, false
 	}
@@ -161,6 +167,9 @@ func (r *RequestsFile) checkTailEntries(
 				}
 
 				if opKind(opBuf[0]) == opRequest {
+					if rerr := r.addTailRecovery(offset); rerr != nil {
+						return err, false
+					}
 					return err, true
 				}
 			}
@@ -351,4 +360,23 @@ func (r *RequestsFile) readEntry(
 	}
 
 	return entry, entryLength, op, nil
+}
+
+// addTailRecovery handles the usual crash case: the last request was only
+// partly written, but its peer_uuid and req_id made it to disk.
+func (r *RequestsFile) addTailRecovery(offset int64) error {
+	var buf [requestRecoveryMinLen]byte
+	if _, err := r.file.ReadAt(buf[:], offset); err != nil {
+		return err
+	}
+	r.recovery = append(r.recovery, RecoveryEntry{
+		Offset: offset,
+		PeerUUID: uuid.UUID(
+			buf[requestPeerUUIDOffset : requestPeerUUIDOffset+requestPeerUUIDLen],
+		),
+		ReqID: binary.BigEndian.Uint32(
+			buf[requestIDOffset : requestIDOffset+requestIDLen],
+		),
+	})
+	return nil
 }

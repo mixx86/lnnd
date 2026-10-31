@@ -124,26 +124,31 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 
 func (SymlinkRequest) inboundRequest() {}
 
+const (
+	resolutionReqIDLen    = 4
+	resolutionAcceptedLen = 1
+	ResolutionPayloadSize = resolutionReqIDLen + resolutionAcceptedLen
+)
+
+// Resolution carries no tag of its own: like every reply, it travels in
+// the frame header.
 type Resolution struct {
 	LCLReqID uint32
 	RMTReqID uint32
 	Accepted bool
-	Tag      uint16
 }
 
+// Payload layout: [rmt_req_id:4][accepted:1]
 func (r Resolution) Encode() []byte {
-	buf := make([]byte, 7)
-	binary.BigEndian.PutUint32(buf[:], r.RMTReqID)
+	buf := make([]byte, ResolutionPayloadSize)
+	binary.BigEndian.PutUint32(buf[:resolutionReqIDLen], r.RMTReqID)
 	if r.Accepted {
-		buf[4] = 1
-	} else {
-		buf[4] = 0
+		buf[resolutionReqIDLen] = 1
 	}
-	binary.BigEndian.PutUint16(buf[:], r.Tag)
 	return buf
 }
 
 func (Resolution) Type() MsgType { return MsgResolution }
-func (Resolution) Size() uint32  { return 5 }
+func (Resolution) Size() uint32  { return ResolutionPayloadSize }
 
 func (Resolution) inboundRequest() {}

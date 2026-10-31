@@ -4,24 +4,19 @@ import "lnn/internal/protocol"
 
 const maxPending = 65536
 
-func (s *SelfNode) RegisterPendingMessage() (<-chan protocol.Payload, uint32, int64) {
+// RegisterPendingMessage takes the tag from the outbox instead of minting
+// one: tags must survive reconnects, and a session does not.
+func (s *SelfNode) RegisterPendingMessage(
+	tag uint32,
+) (<-chan protocol.Payload, int64) {
 	s.PendingMu.Lock()
 	defer s.PendingMu.Unlock()
 	if len(s.Pending) >= maxPending {
-		return nil, 0, protocol.ErrTooManyPending
-	}
-	var tag uint32
-	for {
-		tag = s.Tag.Add(1)
-		if tag != 0 {
-			if _, exists := s.Pending[tag]; !exists {
-				break
-			}
-		}
+		return nil, protocol.ErrTooManyPending
 	}
 	ch := make(chan protocol.Payload, 1)
 	s.Pending[tag] = ch
-	return ch, tag, 0
+	return ch, 0
 }
 
 func (s *SelfNode) ResolveMessage(tag uint32, msg protocol.Payload) {

@@ -2,11 +2,11 @@ package store
 
 import (
 	"encoding/binary"
+	"fmt"
 	"lnn/internal/logger"
 
-	"lnn/internal/peer"
-
 	"lnn/internal/queues"
+	"lnn/internal/recovery"
 	"lnn/internal/sched"
 
 	"path/filepath"
@@ -63,7 +63,10 @@ const (
 		requestIDLen
 )
 
-func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
+func NewRequestsWriter(
+	dir string,
+	pending *recovery.Pending,
+) *RequestsWriter {
 	reqCache, err := OpenRequestsCache(
 		filepath.Join(dir, "requests.cache"),
 		2,
@@ -78,7 +81,7 @@ func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
 	}
 
 	return &RequestsWriter{
-		sm:       sm,
+		pending:  pending,
 		reqFile:  reqFile,
 		reqCache: reqCache,
 	}
@@ -91,17 +94,8 @@ func (w *RequestsWriter) Run(s *sched.Service) {
 	}
 	reqID.Store(srcReqID)
 
-	if err, recoverable := w.reqFile.checkEntries(); err != nil {
-		if recoverable {
-			if err = w.recoverEntries(); err != nil {
-				logger.Daemon.Printf("couldn't recover requests: %v", err)
-			}
-		} else {
-			err := w.reqFile.removeTail()
-			if err != nil {
-				logger.Daemon.Fatalf("error: %v", err)
-			}
-		}
+	if err := w.repairOnStartup(); err != nil {
+		logger.Daemon.Fatalf("repairing requests file: %v", err)
 	}
 
 	for {
@@ -125,6 +119,22 @@ func (w *RequestsWriter) Run(s *sched.Service) {
 
 		w.persistRequests(batch, s)
 	}
+}
+
+func (w *RequestsWriter) repairOnStartup() error {
+	err, recoverable := w.reqFile.checkEntries()
+	if err == nil {
+		return nil
+	}
+	logger.Daemon.Printf("requests file damaged: %v", err)
+
+	if recoverable {
+		// Truncating without recording would lose the requests for good.
+		if err := w.recordRecoveries(); err != nil {
+			return fmt.Errorf("recording recoveries: %w", err)
+		}
+	}
+	return w.reqFile.removeTail()
 }
 
 func (r *RequestsFile) getReqID() (uint32, error) {

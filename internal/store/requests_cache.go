@@ -10,12 +10,11 @@ import (
 
 //  slot:
 //    [req_id:4]
-//    [tag:2]
-// file size = 16 + capacity*6
+//    [tag:4]
 
 const (
 	cacheReqIDLen = 4
-	cacheTagLen   = 2
+	cacheTagLen   = 4
 	cacheEntryLen = cacheReqIDLen + cacheTagLen
 )
 
@@ -31,7 +30,7 @@ func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
 
 	c := &RequestsCache{
 		file:    f,
-		entries: make(map[uint32]uint16),
+		entries: make(map[uint32]uint32),
 	}
 
 	if err := c.load(); err != nil {
@@ -63,7 +62,7 @@ func (c *RequestsCache) load() error {
 		}
 
 		reqID := binary.BigEndian.Uint32(buf[:cacheReqIDLen])
-		tag := binary.BigEndian.Uint16(buf[cacheReqIDLen:])
+		tag := binary.BigEndian.Uint32(buf[cacheReqIDLen:])
 
 		c.entries[reqID] = tag
 	}
@@ -84,41 +83,31 @@ func (c *RequestsCache) load() error {
 	return nil
 }
 
-func (c *RequestsCache) Put(reqID uint32, tag uint16, flush bool) error {
+// Put only appends entries added since the last flush: rewriting the
+// whole map every time made the file grow quadratically. load keeps the
+// last slot per req_id, so a repeated req_id is harmless.
+func (c *RequestsCache) Put(reqID uint32, tag uint32, flush bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.entries[reqID] = tag
 
-	if flush == true {
-		sizeEntries := ((len(c.entries)) * cacheEntryLen)
-		buf := make([]byte, sizeEntries)
-		counter := 1
-		for cache_reqID, cache_tag := range c.entries {
-			offset := (counter * cacheEntryLen) - cacheEntryLen
-			binary.BigEndian.PutUint32(
-				buf[offset:offset+cacheReqIDLen],
-				cache_reqID,
-			)
-			binary.BigEndian.PutUint16(
-				buf[offset+cacheReqIDLen:offset+cacheEntryLen],
-				cache_tag,
-			)
-			counter += 1
-		}
+	var slot [cacheEntryLen]byte
+	binary.BigEndian.PutUint32(slot[:cacheReqIDLen], reqID)
+	binary.BigEndian.PutUint32(slot[cacheReqIDLen:], tag)
+	c.unflushed = append(c.unflushed, slot[:]...)
 
-		if _, err := c.file.Write(buf[:]); err != nil {
-			return err
-		}
-		if err := c.file.Sync(); err != nil {
-			return err
-		}
+	if !flush {
+		return nil
 	}
-
-	return nil
+	if _, err := c.file.Write(c.unflushed); err != nil {
+		return err
+	}
+	c.unflushed = c.unflushed[:0]
+	return c.file.Sync()
 }
 
-func (c *RequestsCache) GetTag(reqID uint32) (uint16, bool) {
+func (c *RequestsCache) GetTag(reqID uint32) (uint32, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

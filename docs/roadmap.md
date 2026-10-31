@@ -35,8 +35,13 @@ See [architecture.md](architecture.md#inbound-request-lifecycle).
 
 - [ ] Inbound request queue + write scheduler: finish adaptive tuning from
       `RecordWriteResult` baselines.
-- [ ] Requests WAL + crash recovery: complete the `RECOVER_REQUEST` exchange
-      on both sides (sender and receiver).
+- [x] Requests WAL + crash recovery: outbox on the sender, pending
+      recoveries on the receiver, `RECOVER_REQUEST` / `ErrUnknownTag`
+      handling, 32-bit per-peer tags.
+- [x] Send `RECOVER_REQUEST` when a peer with pending recoveries completes
+      the inbound handshake.
+- [ ] IPC sends requests through the outbox (tags + pending message), and
+      outbound sessions also send pending `RECOVER_REQUEST`s.
 - [ ] Session state machine: explicit states and transitions, reject
       messages that are invalid for the current state with
       `ErrInvalidState`.

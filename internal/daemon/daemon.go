@@ -2,11 +2,14 @@ package daemon
 
 import (
 	"fmt"
+	"path/filepath"
 
 	app "lnn/internal"
 	"lnn/internal/config"
 	"lnn/internal/identity"
 	"lnn/internal/logger"
+	"lnn/internal/outbox"
+	"lnn/internal/recovery"
 	"lnn/internal/sched"
 	"lnn/internal/store"
 
@@ -42,15 +45,26 @@ func New() (*Daemon, error) {
 		return nil, fmt.Errorf("failed to get data dir: %w", err)
 	}
 
+	sent, err := outbox.Open(filepath.Join(dataDir, "outbox"))
+	if err != nil {
+		return nil, fmt.Errorf("opening outbox: %w", err)
+	}
+	pending, err := recovery.Open(filepath.Join(dataDir, "requests.recovery"))
+	if err != nil {
+		return nil, fmt.Errorf("opening recovery list: %w", err)
+	}
+
 	return &Daemon{
 		Services: app.Services{
 			Identity: identityService,
 			Session:  sessionMgr,
 			Sched:    schedService,
+			Outbox:   sent,
+			Recovery: pending,
 			Writers: &store.Writers{
 				RequestsWriter: *store.NewRequestsWriter(
 					dataDir,
-					sessionMgr,
+					pending,
 				),
 			},
 		},
@@ -74,6 +88,8 @@ func (d *Daemon) Start() error {
 		d.Services.Session,
 		d.Services.Sched,
 		d.Services.Identity,
+		d.Services.Outbox,
+		d.Services.Recovery,
 	)
 
 	go func() {

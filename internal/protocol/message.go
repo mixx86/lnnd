@@ -34,7 +34,7 @@ func (m Frame) Encode() []byte {
 	return packet
 }
 
-func (m Frame) WithTag(tag uint16) Frame {
+func (m Frame) WithTag(tag uint32) Frame {
 	m.Header.Tag = tag
 	return m
 }
@@ -44,7 +44,7 @@ func (h Header) Encode(msgType MsgType, payloadLen uint32) []byte {
 	copy(buf[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	buf[OffsetVersion] = protocolVersion
 	buf[OffsetType] = byte(msgType)
-	binary.BigEndian.PutUint16(buf[OffsetTag:OffsetTag+TagSize], h.Tag)
+	binary.BigEndian.PutUint32(buf[OffsetTag:OffsetTag+TagSize], h.Tag)
 	binary.BigEndian.PutUint32(buf[OffsetLen:OffsetLen+LenSize], payloadLen)
 	return buf
 }
@@ -79,7 +79,7 @@ type Header struct {
 	Magic         [4]byte
 	Version       uint8
 	Type          MsgType
-	Tag           uint16
+	Tag           uint32
 	PayloadLength uint32
 }
 
@@ -87,15 +87,15 @@ const (
 	MagicSize   = 4
 	VersionSize = 1
 	TypeSize    = 1
-	TagSize     = 2
+	TagSize     = 4
 	LenSize     = 4
 
 	OffsetMagic   = 0
 	OffsetVersion = 4
 	OffsetType    = 5
 	OffsetTag     = 6
-	OffsetLen     = 8
-	OffsetBody    = 12
+	OffsetLen     = 10
+	OffsetBody    = 14
 )
 const HeaderSize = MagicSize + VersionSize + TypeSize + TagSize + LenSize
 
@@ -114,7 +114,7 @@ func ReadHeader(r io.Reader) (Header, error) {
 	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
 	header.Version = headerBuf[OffsetVersion]
 	header.Type = MsgType(headerBuf[OffsetType])
-	header.Tag = binary.BigEndian.Uint16(
+	header.Tag = binary.BigEndian.Uint32(
 		headerBuf[OffsetTag : OffsetTag+TagSize],
 	)
 	header.PayloadLength = binary.BigEndian.Uint32(

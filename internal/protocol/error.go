@@ -18,7 +18,7 @@ type Error struct {
 
 // Payload layout: [code:8][message:35]
 func EncodeError(code int64, message string) []byte {
-	packet := make([]byte, HeaderSize+ErrorMessagePayloadSize)
+	packet := make([]byte, ErrorMessagePayloadSize)
 
 	binary.BigEndian.PutUint64(packet[:], uint64(code))
 	copy(packet[CodeErrorMessageSize:], message)
@@ -45,7 +45,7 @@ func ParseError(payload []byte) (Error, error) {
 }
 
 func (Error) Type() MsgType { return MsgError }
-func (Error) Size() uint32  { return ErrorMessageSize }
+func (Error) Size() uint32  { return ErrorMessagePayloadSize }
 
 const (
 	ErrInvalidMessage  int64 = -1
@@ -55,6 +55,7 @@ const (
 	ErrTooManyPending  int64 = -5
 	ErrPendingTimeout  int64 = -6
 	ErrInternal        int64 = -7
+	ErrUnknownTag      int64 = -8
 )
 
 const (
@@ -64,4 +65,5 @@ const (
 	MsgErrOverloaded      = "Daemon overloaded."
 	MsgErrPendingTimeout  = "Timed out waiting for a response."
 	MsgErrInternal        = "Internal error."
+	MsgErrUnknownTag      = "Unknown tag."
 )

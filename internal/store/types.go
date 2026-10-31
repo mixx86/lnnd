@@ -1,7 +1,7 @@
 package store
 
 import (
-	"lnn/internal/peer"
+	"lnn/internal/recovery"
 	"lnn/internal/sched"
 	"os"
 	"sync"
@@ -13,7 +13,8 @@ type RequestsCache struct {
 
 	file *os.File
 
-	entries map[uint32]uint16
+	entries   map[uint32]uint32
+	unflushed []byte
 
 	capacity uint32
 }
@@ -34,7 +35,7 @@ type RecoveryEntry struct {
 var reqID atomic.Uint32
 
 type RequestsWriter struct {
-	sm *peer.SessionManager
+	pending *recovery.Pending
 
 	reqFile  *RequestsFile
 	reqCache *RequestsCache
