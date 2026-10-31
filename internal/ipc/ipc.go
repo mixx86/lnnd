@@ -8,7 +8,6 @@ import (
 	"os"
 )
 
-// One request per connection — each CLI invocation opens a fresh socket.
 func HandleConnUNIX(conn net.Conn, s app.Services) {
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -28,11 +27,8 @@ func HandleConnUNIX(conn net.Conn, s app.Services) {
 	HandleRequest(&req, conn, s)
 }
 
-// ListenIPC starts the Unix socket listener. Reads the path from LNND_IPC_SOCKET. Blocks indefinitely.
 func ListenIPC(s app.Services) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
-	// Remove any stale socket file left by a previous unclean shutdown; net.Listen would
-	// fail with "address already in use" otherwise even though nothing is listening.
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: could not remove socket file %s: %v", path, err)
 	}

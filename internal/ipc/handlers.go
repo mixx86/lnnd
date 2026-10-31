@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	app "lnn/internal"
+	"lnn/internal/config"
 	"lnn/internal/network"
 	"lnn/internal/protocol"
 	"log"
@@ -45,8 +46,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 		}
 		switch req.Type {
 		case "symreq":
-			// TODO: Verify if there's already a session with the same id/key
-			conn, err := network.ConnectTCP(req.IP)
+			transport, err := network.NewTransport(config.DefaultNetworkConfig())
 			if err != nil {
 				bytes, err := Response{
 					Ok:  false,
@@ -60,6 +60,21 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 					return
 				}
 				return
+			}
+			conn, err := transport.Dial()
+			if err != nil {
+				bytes, err := Response{
+					Ok:  false,
+					Err: err.Error(),
+				}.Encode()
+				if err != nil {
+					return
+				}
+				_, err = unixConn.Write(bytes)
+				if err != nil {
+					return
+				}
+				return	
 			}
 			session, err := network.OutboundHandshake(conn, s.Identity, s.Session)
 			if err != nil {

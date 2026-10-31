@@ -1,141 +1,53 @@
 package network
 
 import (
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	"os"
+	"context"
+	"lnn/internal/config"
+	"time"
 
-	"lnn/internal/identity"
-	"lnn/internal/logger"
-	"lnn/internal/peer"
-	"lnn/internal/protocol"
-	"lnn/internal/sched"
+	"net"
 )
 
-func ConnectTCP(ip string) (net.Conn, error) {
-	port := os.Getenv("TCP_PORT")
-	return net.Dial("tcp", ip+":"+port)
+type TCPTransport struct{
+    KeepAlive       bool
+    KeepAlivePeriod time.Duration
+	Port 			string
 }
 
-func ListenTCP(sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) error {
-	port := os.Getenv("TCP_PORT")
-	ln, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		return err
-	}
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			logger.Daemon.Printf("Error accepting TCP connection: %v", err)
-			continue
-		}
-		go HandleConnTCP(conn, sm, schedService, idService)
+func NewTCPTransport(cfg config.TCPConfig) *TCPTransport {
+    return &TCPTransport{
+        KeepAlive:       cfg.KeepAlive,
+        KeepAlivePeriod: cfg.KeepAlivePeriod,
+		Port: 			 cfg.Port,
 	}
 }
 
-func SendTCP(s *peer.Session, data protocol.Frame) error {
-	packet := data.Encode()
-
-	// Both the TCP read loop and the IPC handler can send; lock to avoid interleaving.
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	_, err := s.Conn.Write(packet)
-	return err
+func (t *TCPTransport) Dial(
+    ctx context.Context,
+    address string,
+) (net.Conn, error) {
+    var d net.Dialer
+    return d.DialContext(ctx, "tcp", address)
 }
 
-// Pre-handshake only: no Peer exists yet and the conn is owned by a single goroutine, so no lock needed.
-func sendRaw(conn net.Conn, data protocol.Frame) error {
-	packet := data.Encode()
-
-	_, err := conn.Write(packet)
-
-	return err
+func (t *TCPTransport) Listen() (net.Listener, error) {
+	return net.Listen("tcp", ":"+t.Port)
 }
 
-func ReceiveTCP(conn net.Conn) (protocol.Frame, error) {
-	header, err := protocol.ReadHeader(conn)
-	if err != nil {
-		return protocol.Frame{}, err
-	}
+func (t *TCPTransport) ConfigureKeepAlive(conn net.Conn) error {
+    tcpConn, ok := conn.(*net.TCPConn)
+    if !ok {
+        return nil
+    }
 
-	switch header.Type {
-	case protocol.MsgHello:
-		payload := make([]byte, protocol.HelloPayloadSize)
-		_, err := io.ReadFull(conn, payload)
+    if err := tcpConn.SetKeepAlive(t.KeepAlive); err != nil {
+        return err
+    }
 
-		if err != nil {
-			return protocol.Frame{}, err
-		}
+    if t.KeepAlive {
+        return tcpConn.SetKeepAlivePeriod(t.KeepAlivePeriod)
+    }
 
-		hello, err := protocol.ParseHello(payload)
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		return protocol.Frame{
-			Header: header,
-			Body:   hello,
-		}, nil
-
-	case protocol.MsgChallenge:
-		payload := make([]byte, protocol.ChallengePayloadSize)
-		_, err := io.ReadFull(conn, payload)
-
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		challenge, err := protocol.ParseChallenge(payload)
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		return protocol.Frame{
-			Header: header,
-			Body:   challenge,
-		}, nil
-
-	case protocol.MsgChallengeResp:
-		payload := make([]byte, protocol.ChallengeRespPayloadSize)
-		_, err := io.ReadFull(conn, payload)
-
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		challenge, err := protocol.ParseChallengeResp(payload)
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-		return protocol.Frame{
-			Header: header,
-			Body:   challenge,
-		}, nil
-
-	case protocol.MsgSymLinkRequest:
-		if header.PayloadLength > 8192 || header.PayloadLength < 3 {
-			return protocol.Frame{}, errors.New("invalid payload size")
-		}
-		payload := make([]byte, header.PayloadLength)
-		_, err := io.ReadFull(conn, payload)
-
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		symlinkreq, err := protocol.ParseSymLinkRequest(payload)
-		if err != nil {
-			return protocol.Frame{}, err
-		}
-
-		return protocol.Frame{
-			Header: header,
-			Body:   symlinkreq,
-		}, nil
-
-	default:
-		return protocol.Frame{}, fmt.Errorf("unknown message type: %d", header.Type)
-	}
+    return nil
 }
+

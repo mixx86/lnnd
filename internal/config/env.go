@@ -1,4 +1,3 @@
-// Package config provides configuration loading utilities for the LNN daemon.
 package config
 
 import (
@@ -7,7 +6,43 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
+
+func DefaultNetworkConfig() NetworkConfig {
+    return NetworkConfig{
+        Transport: "tcp",
+        TCP: TCPConfig{
+            Port:            os.Getenv("TCP_PORT"),
+            KeepAlive:       true,
+            KeepAlivePeriod: 30 * time.Second,
+        },
+        QUIC: QUICConfig{
+            Port:            os.Getenv("QUIC_PORT"),
+            KeepAlivePeriod: 30 * time.Second,
+            MaxIdleTimeout:  60 * time.Second,
+        },
+    }
+}
+
+type TCPConfig struct {
+    Port            string        `mapstructure:"port"`
+    KeepAlive       bool          `mapstructure:"keep_alive"`
+    KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
+}
+
+type QUICConfig struct {
+    Port            string        `mapstructure:"port"`
+    KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
+    MaxIdleTimeout  time.Duration `mapstructure:"max_idle_timeout"`
+}
+
+type NetworkConfig struct {
+    Transport string `mapstructure:"transport"`
+
+    TCP TCPConfig `mapstructure:"tcp"`
+    QUIC QUICConfig `mapstructure:"quic"`
+}
 
 func DataDir() (string, error) {
 	home, err := os.UserHomeDir()

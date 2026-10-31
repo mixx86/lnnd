@@ -13,23 +13,19 @@ import (
 	"lnn/internal/sched"
 )
 
-// 5-second handshake deadline: prevents a slow or malicious peer from holding the goroutine forever.
-func HandleConnTCP(conn net.Conn, sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) {
+func HandleConn(conn net.Conn, transport Transport, sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
 		}
 	}()
-	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		// Failure is non-fatal: we just lose OS-level dead-peer detection.
-		if err := tcpConn.SetKeepAlive(true); err != nil {
-			logger.Daemon.Printf("Couldn't activate KeepAlive in %s: %v", conn.RemoteAddr(), err)
+	if keepAlive, ok := transport.(interface {
+		ConfigureKeepAlive(net.Conn) error
+	}); ok {
+		if err := keepAlive.ConfigureKeepAlive(conn); err != nil {
+			logger.Daemon.Printf("Error configuring KeepAlive: %v", err)
+			conn.Close()
 		}
-		if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
-			logger.Daemon.Printf("Couldn't set KeepAlive period in %s: %v", conn.RemoteAddr(), err)
-		}
-	} else {
-		logger.Daemon.Printf("Couldn't activate KeepAlive in %s", conn.RemoteAddr())
 	}
 
 	if conn.SetDeadline(time.Now().Add(5*time.Second)) != nil {
@@ -47,7 +43,7 @@ func HandleConnTCP(conn net.Conn, sm *peer.SessionManager, schedService *sched.S
 	}
 
 	for {
-		msg, err := ReceiveTCP(conn)
+		msg, err := ReadFrame(conn)
 		if err != nil {
 			logger.Daemon.Printf("Error receiving TCP packets: %v", err)
 			return
@@ -77,28 +73,28 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sc
 
 			if err != nil {
 				if errors.Is(err, sched.ErrRequestsQueueFull) {
-					SendTCP(s, protocol.Frame{
+					SendFrame(s, protocol.Frame{
 						Body: protocol.Error{
 							Code:    protocol.ErrOverloaded,
 							Message: protocol.MsgErrOverloaded,
 						},
 					}.WithTag(msg.Header.Tag))
 				}
-				SendTCP(s, protocol.Frame{
+				SendFrame(s, protocol.Frame{
 					Body: protocol.Error{
 						Code:    protocol.ErrInternal,
 						Message: protocol.MsgErrInternal,
 					},
 				}.WithTag(msg.Header.Tag))
 			}
-			SendTCP(s, protocol.Frame{
+			SendFrame(s, protocol.Frame{
 				Body: protocol.Ok{},
 			}.WithTag(msg.Header.Tag))
 		}()
 		return nil
 
 	case protocol.Hello, protocol.Challenge, protocol.ChallengeResp:
-		SendTCP(s, protocol.Frame{
+		SendFrame(s, protocol.Frame{
 			Body: protocol.Error{
 				Code:    protocol.ErrInvalidState,
 				Message: protocol.MsgErrInvalidState,
@@ -107,7 +103,7 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sc
 		return fmt.Errorf("handshake message received in state %v from peer %v", s.State, s.Remote.ID)
 
 	default:
-		SendTCP(s, protocol.Frame{
+		SendFrame(s, protocol.Frame{
 			Body: protocol.Error{
 				Code:    protocol.ErrInvalidMessage,
 				Message: protocol.MsgErrInvalidMessage,

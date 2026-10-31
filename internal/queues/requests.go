@@ -1,5 +1,3 @@
-// Package iocore owns the inbound request queue and the io_uring pressure signal.
-// Future: io_uring scheduler and submission/completion machinery lives here.
 package queues
 
 import (
@@ -23,7 +21,6 @@ func requestsQueueSize() uint16 {
 	return defaultReqChannelSize
 }
 
-// New creates and initialises an iocore Manager.
 func NewRequestsQueue() *RequestsQueue {
 	return &RequestsQueue{
 		queue: make(chan PendingRequest, requestsQueueSize()),

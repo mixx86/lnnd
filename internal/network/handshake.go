@@ -16,7 +16,7 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 		return nil, fmt.Errorf("error generating the nonce")
 	}
 
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.Hello{
 			ID:        creds.ID,
 			PublicKey: creds.PubKey,
@@ -25,7 +25,7 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 	if err != nil {
 		return nil, fmt.Errorf("error sending the HELLO message")
 	}
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.Challenge{
 			Nonce: nonce,
 		},
@@ -34,31 +34,31 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 		return nil, fmt.Errorf("error sending the CHALLENGE message")
 	}
 
-	msg, err := ReceiveTCP(conn)
+	msg, err := ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the response")
 	}
 	hello, ok := msg.Body.(protocol.Hello)
 	if !ok {
-		return nil, fmt.Errorf("error converting the response")
+		return nil, fmt.Errorf("invalid response")
 	}
 
-	msg, err = ReceiveTCP(conn)
+	msg, err = ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the CHALLENGE message")
 	}
 	challenge, ok := msg.Body.(protocol.Challenge)
 	if !ok {
-		return nil, fmt.Errorf("error converting the response")
+		return nil, fmt.Errorf("invalid response")
 	}
 
-	msg, err = ReceiveTCP(conn)
+	msg, err = ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the CHALLENGE_RESP message")
 	}
 	challengeResp, ok := msg.Body.(protocol.ChallengeResp)
 	if !ok {
-		return nil, fmt.Errorf("invalid type of data: %v", err)
+		return nil, fmt.Errorf("invalid response")
 	}
 	ok = protocol.VerifyKey(hello.PublicKey, nonce, challengeResp.Signature)
 	if !ok {
@@ -66,7 +66,7 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 	}
 
 	signature := protocol.ResolveNonce(creds.PrivKey, challenge.Nonce)
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.ChallengeResp{
 			Signature: signature,
 		},
@@ -86,7 +86,7 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 // InBoundHandshake authenticates an incoming connection as the accepting side.
 // Returns a verified Peer registered in pm.
 func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManager) (*peer.Session, error) {
-	msg, err := ReceiveTCP(conn)
+	msg, err := ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the HELLO message")
 	}
@@ -95,13 +95,13 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 		return nil, fmt.Errorf("error converting the response")
 	}
 
-	msg, err = ReceiveTCP(conn)
+	msg, err = ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the CHALLENGE message")
 	}
 	challenge, ok := msg.Body.(protocol.Challenge)
 	if !ok {
-		return nil, fmt.Errorf("error converting the response")
+		return nil, fmt.Errorf("invalid response")
 	}
 
 	nonce, err := protocol.GenerateNonce()
@@ -110,7 +110,7 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 	}
 
 	creds := i.Creds()
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.Hello{
 			ID:        creds.ID,
 			PublicKey: creds.PubKey,
@@ -120,7 +120,7 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 		return nil, fmt.Errorf("error sending the HELLO message")
 	}
 
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.Challenge{Nonce: nonce},
 	})
 	if err != nil {
@@ -128,7 +128,7 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 	}
 
 	signature := protocol.ResolveNonce(creds.PrivKey, challenge.Nonce)
-	err = sendRaw(conn, protocol.Frame{
+	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.ChallengeResp{
 			Signature: signature,
 		},
@@ -137,13 +137,13 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 		return nil, err
 	}
 
-	msg, err = ReceiveTCP(conn)
+	msg, err = ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the CHALLENGE_RESP message")
 	}
 	challengeResp, ok := msg.Body.(protocol.ChallengeResp)
 	if !ok {
-		return nil, fmt.Errorf("invalid type of data: %v", err)
+		return nil, fmt.Errorf("invalid response")
 	}
 
 	ok = protocol.VerifyKey(hello.PublicKey, nonce, challengeResp.Signature)
@@ -151,7 +151,6 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 		return nil, fmt.Errorf("error verifying the key")
 	}
 
-	// TODO: Verify if there's already a session with the same id/key
 	session := peer.NewSession(hello.ID, hello.PublicKey, conn)
 
 	pm.Register(session)

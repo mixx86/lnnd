@@ -42,7 +42,7 @@ func (w *RequestsWriter) recoverRequest(
 		return fmt.Errorf("no peer with uuid %v was found", peerUUID)
 	}
 
-	err := network.SendTCP(s, protocol.Frame{
+	err := network.SendFrame(s, protocol.Frame{
 		Body: protocol.RecoverRequest{},
 	}.WithTag(tag))
 	if err != nil {
