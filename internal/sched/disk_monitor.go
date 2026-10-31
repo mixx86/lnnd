@@ -54,71 +54,69 @@ func (s *Service) sampleDisk() {
 	}
 }
 
-
 func (s *Service) UpdateDiskUtilization(util float64) {
-    const (
-        alpha       = 0.2
-        highLimit   = 90.0
-        lowLimit    = 65.0
-        holdTime    = 2 * time.Second
-    )
+	const (
+		alpha     = 0.2
+		highLimit = 90.0
+		lowLimit  = 65.0
+		holdTime  = 2 * time.Second
+	)
 
-    now := time.Now()
+	now := time.Now()
 
-    s.diskTrackerMu.Lock()
+	s.diskTrackerMu.Lock()
 
-    d := &s.diskLoad
+	d := &s.diskLoad
 
-    if !d.Initialized {
-        d.SmoothedUtil = util
-        d.Initialized = true
-    } else {
-        d.SmoothedUtil = alpha*util +
-            (1-alpha)*d.SmoothedUtil
-    }
+	if !d.Initialized {
+		d.SmoothedUtil = util
+		d.Initialized = true
+	} else {
+		d.SmoothedUtil = alpha*util +
+			(1-alpha)*d.SmoothedUtil
+	}
 
-    previousState := d.State
+	previousState := d.State
 
-    switch {
-    case d.SmoothedUtil > highLimit:
-        d.LowSince = time.Time{}
+	switch {
+	case d.SmoothedUtil > highLimit:
+		d.LowSince = time.Time{}
 
-        if d.HighSince.IsZero() {
-            d.HighSince = now
-        }
+		if d.HighSince.IsZero() {
+			d.HighSince = now
+		}
 
-        if now.Sub(d.HighSince) >= holdTime {
-            d.State = DiskLoadSaturated
-        }
+		if now.Sub(d.HighSince) >= holdTime {
+			d.State = DiskLoadSaturated
+		}
 
-    case d.SmoothedUtil < lowLimit:
-        d.HighSince = time.Time{}
+	case d.SmoothedUtil < lowLimit:
+		d.HighSince = time.Time{}
 
-        if d.LowSince.IsZero() {
-            d.LowSince = now
-        }
+		if d.LowSince.IsZero() {
+			d.LowSince = now
+		}
 
-        if now.Sub(d.LowSince) >= holdTime {
-            d.State = DiskLoadNormal
-        }
+		if now.Sub(d.LowSince) >= holdTime {
+			d.State = DiskLoadNormal
+		}
 
-    default:
-        d.HighSince = time.Time{}
-        d.LowSince = time.Time{}
+	default:
+		d.HighSince = time.Time{}
+		d.LowSince = time.Time{}
 
-        if d.State == DiskLoadNormal {
-            d.State = DiskLoadElevated
-        } else if d.State == DiskLoadSaturated {
-            d.State = DiskLoadElevated
-        }
-    }
+		if d.State == DiskLoadNormal {
+			d.State = DiskLoadElevated
+		} else if d.State == DiskLoadSaturated {
+			d.State = DiskLoadElevated
+		}
+	}
 
-    changed := previousState != d.State
+	changed := previousState != d.State
 
-    s.diskTrackerMu.Unlock()
+	s.diskTrackerMu.Unlock()
 
-    if changed {
-        s.signalScheduler()
-    }
+	if changed {
+		s.signalScheduler()
+	}
 }
-

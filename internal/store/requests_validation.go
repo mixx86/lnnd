@@ -55,13 +55,13 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 	}
 
 	_, entryLength, op, err := r.readEntry(lco, fileSize)
-  	if err != nil {
-  		return err, false
-  	}
+	if err != nil {
+		return err, false
+	}
 
-  	if op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
-  		return fmt.Errorf("invalid checkpoint at lco %d", lco), false
-  	}
+	if op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
+		return fmt.Errorf("invalid checkpoint at lco %d", lco), false
+	}
 
 	// There are entries after the last checkpoint. Validate only the
 	// uncheckpointed tail using entry_length.
@@ -190,36 +190,36 @@ func (r *RequestsFile) checkTailEntries(
 }
 
 func (r *RequestsFile) findLCO() (uint64, error) {
-  	info, err := r.file.Stat()
-  	if err != nil {
-  		return 0, err
-  	}
+	info, err := r.file.Stat()
+	if err != nil {
+		return 0, err
+	}
 
-  	lastCheckpoint := int64(-1)
-  	offset := int64(F_HEADER_TOTAL_LEN)
+	lastCheckpoint := int64(-1)
+	offset := int64(F_HEADER_TOTAL_LEN)
 
-  	for offset < info.Size() {
-  		_, entryLength, op, err := r.readEntry(offset, info.Size())
-  		if err != nil {
-  			break
-  		}
+	for offset < info.Size() {
+		_, entryLength, op, err := r.readEntry(offset, info.Size())
+		if err != nil {
+			break
+		}
 
-  		if op == OP_CHECKPOINT {
-  			if entryLength != uint32(CHECKPOINT_LEN) {
-  				break
-  			}
-  			lastCheckpoint = offset
-  		}
+		if op == OP_CHECKPOINT {
+			if entryLength != uint32(CHECKPOINT_LEN) {
+				break
+			}
+			lastCheckpoint = offset
+		}
 
-  		offset += int64(entryLength)
-  	}
+		offset += int64(entryLength)
+	}
 
-  	if lastCheckpoint == -1 {
-  		return 0, ErrNoPreviousCheckpoint
-  	}
+	if lastCheckpoint == -1 {
+		return 0, ErrNoPreviousCheckpoint
+	}
 
-  	return uint64(lastCheckpoint), nil
-  }
+	return uint64(lastCheckpoint), nil
+}
 
 func (r *RequestsFile) findPreviousCheckpoint(
 	lco int64,
@@ -350,4 +350,3 @@ func (r *RequestsFile) readEntry(
 
 	return entry, entryLength, op, nil
 }
-

@@ -15,7 +15,7 @@ func NewService() *Service {
 		pressure: map[SourceID]*atomic.Uint32{
 			RequestsCacheID: &atomic.Uint32{},
 			RequestsID:      &atomic.Uint32{},
-			FilesID: 		   &atomic.Uint32{},
+			FilesID:         &atomic.Uint32{},
 		},
 		activeWriters: map[*Writer]struct{}{},
 	}
@@ -39,15 +39,15 @@ func NewService() *Service {
 	}
 
 	s.sourceQueues = map[SourceID]queues.QueueID{
-    	RequestsID:      queues.RequestsQueueID,
-    	FilesID:         queues.FilesQueueID,
+		RequestsID: queues.RequestsQueueID,
+		FilesID:    queues.FilesQueueID,
 	}
 	QueuePressureTemplate := QueuePressure{
 		MaxQueuedBytes: 0,
 	}
 	s.queuePressure = map[queues.QueueID]QueuePressure{
-		queues.RequestsQueueID:  QueuePressureTemplate,
-		queues.FilesQueueID: 	 QueuePressureTemplate,
+		queues.RequestsQueueID: QueuePressureTemplate,
+		queues.FilesQueueID:    QueuePressureTemplate,
 	}
 
 	s.maxWriters = 8
@@ -66,5 +66,3 @@ func (s *Service) Run() {
 		s.dispatchWriters()
 	}
 }
-
-

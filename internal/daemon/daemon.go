@@ -48,7 +48,6 @@ func New() (*Daemon, error) {
 func (d *Daemon) Start() error {
 	logger.Daemon.Println("Starting lnnd...")
 
-
 	go d.Sched.Run()
 	go d.Writers.Run(d.Sched)
 

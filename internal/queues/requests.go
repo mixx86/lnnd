@@ -33,7 +33,7 @@ func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundR
 		Req:        req,
 		Written:    make(chan error),
 		EnqueuedAt: uint64(time.Now().Unix()),
-		Tag: tag,
+		Tag:        tag,
 	}
 }
 
@@ -70,4 +70,3 @@ func (q *RequestsQueue) TryDequeue() (PendingRequest, bool) {
 		return PendingRequest{}, false
 	}
 }
-

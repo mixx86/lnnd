@@ -56,4 +56,3 @@ func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
 	req, ok := q.TryDequeue()
 	return req, ok, nil
 }
-

@@ -75,7 +75,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				if err != nil {
 					return
 				}
-				return	
+				return
 			}
 			session, err := network.OutboundHandshake(conn, s.Identity, s.Session)
 			if err != nil {

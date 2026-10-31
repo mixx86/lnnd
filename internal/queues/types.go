@@ -27,16 +27,16 @@ type PendingRequest struct {
 }
 
 type RequestsQueue struct {
-	queue      chan PendingRequest
-	config     QueueConfig
+	queue  chan PendingRequest
+	config QueueConfig
 }
 
 type FilesQueue struct {
 }
 
 type QueueConfig struct {
-    MaxQueuedBytes int64
-    QueuedBytes    atomic.Int64
+	MaxQueuedBytes int64
+	QueuedBytes    atomic.Int64
 }
 
 type Queue[T any, U any] interface {

@@ -19,9 +19,9 @@ type RequestsCache struct {
 }
 
 type RequestsFile struct {
-	path string
-    file *os.File
-    mu   sync.Mutex
+	path     string
+	file     *os.File
+	mu       sync.Mutex
 	recovery []RecoveryEntry
 }
 
@@ -34,7 +34,7 @@ type RecoveryEntry struct {
 var reqID atomic.Uint32
 
 type RequestsWriter struct {
-	sm      *peer.SessionManager
+	sm *peer.SessionManager
 
 	reqFile  *RequestsFile
 	reqCache *RequestsCache

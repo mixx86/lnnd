@@ -45,7 +45,7 @@ func HandleConn(conn net.Conn, transport Transport, sm *peer.SessionManager, sch
 	for {
 		msg, err := ReadFrame(conn)
 		if err != nil {
-			logger.Daemon.Printf("Error receiving TCP packets: %v", err)
+			logger.Daemon.Printf("Error receiving packets: %v", err)
 			return
 		}
 		err = HandleTCPMessage(conn, msg, p, schedService)

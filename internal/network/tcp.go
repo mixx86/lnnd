@@ -8,26 +8,26 @@ import (
 	"net"
 )
 
-type TCPTransport struct{
-    KeepAlive       bool
-    KeepAlivePeriod time.Duration
-	Port 			string
+type TCPTransport struct {
+	KeepAlive       bool
+	KeepAlivePeriod time.Duration
+	Port            string
 }
 
 func NewTCPTransport(cfg config.TCPConfig) *TCPTransport {
-    return &TCPTransport{
-        KeepAlive:       cfg.KeepAlive,
-        KeepAlivePeriod: cfg.KeepAlivePeriod,
-		Port: 			 cfg.Port,
+	return &TCPTransport{
+		KeepAlive:       cfg.KeepAlive,
+		KeepAlivePeriod: cfg.KeepAlivePeriod,
+		Port:            cfg.Port,
 	}
 }
 
 func (t *TCPTransport) Dial(
-    ctx context.Context,
-    address string,
+	ctx context.Context,
+	address string,
 ) (net.Conn, error) {
-    var d net.Dialer
-    return d.DialContext(ctx, "tcp", address)
+	var d net.Dialer
+	return d.DialContext(ctx, "tcp", address)
 }
 
 func (t *TCPTransport) Listen() (net.Listener, error) {
@@ -35,19 +35,18 @@ func (t *TCPTransport) Listen() (net.Listener, error) {
 }
 
 func (t *TCPTransport) ConfigureKeepAlive(conn net.Conn) error {
-    tcpConn, ok := conn.(*net.TCPConn)
-    if !ok {
-        return nil
-    }
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return nil
+	}
 
-    if err := tcpConn.SetKeepAlive(t.KeepAlive); err != nil {
-        return err
-    }
+	if err := tcpConn.SetKeepAlive(t.KeepAlive); err != nil {
+		return err
+	}
 
-    if t.KeepAlive {
-        return tcpConn.SetKeepAlivePeriod(t.KeepAlivePeriod)
-    }
+	if t.KeepAlive {
+		return tcpConn.SetKeepAlivePeriod(t.KeepAlivePeriod)
+	}
 
-    return nil
+	return nil
 }
-

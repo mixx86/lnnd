@@ -46,7 +46,7 @@ func (w *RequestsWriter) recoverRequest(
 		Body: protocol.RecoverRequest{},
 	}.WithTag(tag))
 	if err != nil {
-		return err	
+		return err
 	}
 
 	return nil
@@ -82,4 +82,3 @@ func (w *RequestsWriter) writeRecoveredRequest(
 	_, err := f.Write(request)
 	return err
 }
-

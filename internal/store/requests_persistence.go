@@ -29,13 +29,15 @@ func (r *RequestsFile) writeEntry(bw *bufio.Writer, op OP_KIND, fields []byte) e
 func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
 	reqIDs := make([]uint32, len(batch))
 	for i := range batch {
-    	reqIDs[i] = w.reqFile.nextReqID()
+		reqIDs[i] = w.reqFile.nextReqID()
 	}
-	go func(){
+	go func() {
 		lastIdx := len(batch) - 1
 		var flush bool
 		for idx, pr := range batch {
-			if idx == lastIdx { flush = true }
+			if idx == lastIdx {
+				flush = true
+			}
 			if err := w.reqCache.Put(reqIDs[idx], pr.Tag, flush); err != nil {
 				return
 			}
@@ -65,30 +67,29 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 		return err
 	}
 
-  lco, err := w.reqFile.checkpoint(w.reqFile.file, bw)
-  if err != nil {
-  	notifyWriteResult(batch, err)
-  	return err
-  }
+	lco, err := w.reqFile.checkpoint(w.reqFile.file, bw)
+	if err != nil {
+		notifyWriteResult(batch, err)
+		return err
+	}
 
-  if err := bw.Flush(); err != nil {
-  	notifyWriteResult(batch, err)
-  	return err
-  }
-  if err := w.reqFile.file.Sync(); err != nil {
-  	notifyWriteResult(batch, err)
-  	return err
-  }
+	if err := bw.Flush(); err != nil {
+		notifyWriteResult(batch, err)
+		return err
+	}
+	if err := w.reqFile.file.Sync(); err != nil {
+		notifyWriteResult(batch, err)
+		return err
+	}
 
-  if err := w.reqFile.setLco(lco); err != nil {
-  	notifyWriteResult(batch, err)
-  	return err
-  }
-  if err := w.reqFile.file.Sync(); err != nil {
-  	notifyWriteResult(batch, err)
-  	return err
-  }
-
+	if err := w.reqFile.setLco(lco); err != nil {
+		notifyWriteResult(batch, err)
+		return err
+	}
+	if err := w.reqFile.file.Sync(); err != nil {
+		notifyWriteResult(batch, err)
+		return err
+	}
 
 	notifyWriteResult(batch, nil)
 	return nil
@@ -151,97 +152,96 @@ func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.P
 	return nil
 }
 
-  func (r *RequestsFile) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) {
-  	info, err := f.Stat()
-  	if err != nil {
-  		return 0, err
-  	}
+func (r *RequestsFile) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
 
-  	lco := uint64(info.Size())
+	lco := uint64(info.Size())
 
-  	prevLco, err := r.getLco()
-  	if err != nil {
-  		return 0, err
-  	}
+	prevLco, err := r.getLco()
+	if err != nil {
+		return 0, err
+	}
 
-  	checkpointEnd := prevLco + CHECKPOINT_LEN
+	checkpointEnd := prevLco + CHECKPOINT_LEN
 
-  	switch {
-  	case checkpointEnd == info.Size():
-  		return 0, fmt.Errorf("cannot put a new checkpoint without new entries")
-  	case checkpointEnd > info.Size():
-  		return 0, fmt.Errorf("invalid last checkpoint offset")
-  	}
+	switch {
+	case checkpointEnd == info.Size():
+		return 0, fmt.Errorf("cannot put a new checkpoint without new entries")
+	case checkpointEnd > info.Size():
+		return 0, fmt.Errorf("invalid last checkpoint offset")
+	}
 
-  	sr := io.NewSectionReader(f, checkpointEnd, info.Size()-checkpointEnd)
+	sr := io.NewSectionReader(f, checkpointEnd, info.Size()-checkpointEnd)
 
-  	var checksum uint32
-  	var entryLengthBuf [ENTRY_LENGTH_LEN]byte
-  	var entryOffset int64
+	var checksum uint32
+	var entryLengthBuf [ENTRY_LENGTH_LEN]byte
+	var entryOffset int64
 
-  	for entryOffset < sr.Size() {
-  		if int64(ENTRY_LENGTH_LEN) > sr.Size()-entryOffset {
-  			return 0, fmt.Errorf(
-  				"truncated entry length at offset %d",
-  				checkpointEnd+entryOffset,
-  			)
-  		}
+	for entryOffset < sr.Size() {
+		if int64(ENTRY_LENGTH_LEN) > sr.Size()-entryOffset {
+			return 0, fmt.Errorf(
+				"truncated entry length at offset %d",
+				checkpointEnd+entryOffset,
+			)
+		}
 
-  		if _, err := io.ReadFull(sr, entryLengthBuf[:]); err != nil {
-  			return 0, fmt.Errorf(
-  				"reading entry length at offset %d: %w",
-  				checkpointEnd+entryOffset,
-  				err,
-  			)
-  		}
+		if _, err := io.ReadFull(sr, entryLengthBuf[:]); err != nil {
+			return 0, fmt.Errorf(
+				"reading entry length at offset %d: %w",
+				checkpointEnd+entryOffset,
+				err,
+			)
+		}
 
-  		entryLength := binary.BigEndian.Uint32(entryLengthBuf[:])
+		entryLength := binary.BigEndian.Uint32(entryLengthBuf[:])
 
-  		if entryLength < uint32(ENTRY_HEADER_LEN) {
-  			return 0, fmt.Errorf(
-  				"invalid entry length %d at offset %d",
-  				entryLength,
-  				checkpointEnd+entryOffset,
-  			)
-  		}
+		if entryLength < uint32(ENTRY_HEADER_LEN) {
+			return 0, fmt.Errorf(
+				"invalid entry length %d at offset %d",
+				entryLength,
+				checkpointEnd+entryOffset,
+			)
+		}
 
-  		if uint64(entryLength) > uint64(sr.Size()-entryOffset) {
-  			return 0, fmt.Errorf(
-  				"truncated entry at offset %d: length=%d, remaining=%d",
-  				checkpointEnd+entryOffset,
-  				entryLength,
-  				sr.Size()-entryOffset,
-  			)
-  		}
+		if uint64(entryLength) > uint64(sr.Size()-entryOffset) {
+			return 0, fmt.Errorf(
+				"truncated entry at offset %d: length=%d, remaining=%d",
+				checkpointEnd+entryOffset,
+				entryLength,
+				sr.Size()-entryOffset,
+			)
+		}
 
-  		entry := make([]byte, entryLength)
-  		copy(entry[:ENTRY_LENGTH_LEN], entryLengthBuf[:])
+		entry := make([]byte, entryLength)
+		copy(entry[:ENTRY_LENGTH_LEN], entryLengthBuf[:])
 
-  		if _, err := io.ReadFull(sr, entry[ENTRY_LENGTH_LEN:]); err != nil {
-  			return 0, fmt.Errorf(
-  				"reading entry at offset %d: %w",
-  				checkpointEnd+entryOffset,
-  				err,
-  			)
-  		}
+		if _, err := io.ReadFull(sr, entry[ENTRY_LENGTH_LEN:]); err != nil {
+			return 0, fmt.Errorf(
+				"reading entry at offset %d: %w",
+				checkpointEnd+entryOffset,
+				err,
+			)
+		}
 
-  		checksum += calculateCheckSum(entry)
-  		entryOffset += int64(entryLength)
-  	}
+		checksum += calculateCheckSum(entry)
+		entryOffset += int64(entryLength)
+	}
 
-  	var fields [CHECKPOINT_CSUM_LEN]byte
-  	binary.BigEndian.PutUint32(fields[:], checksum)
+	var fields [CHECKPOINT_CSUM_LEN]byte
+	binary.BigEndian.PutUint32(fields[:], checksum)
 
-  	if err := r.writeEntry(bw, OP_CHECKPOINT, fields[:]); err != nil {
-  		return 0, err
-  	}
+	if err := r.writeEntry(bw, OP_CHECKPOINT, fields[:]); err != nil {
+		return 0, err
+	}
 
-  	return lco, nil
-  }
+	return lco, nil
+}
 
 func notifyWriteResult(batch []queues.PendingRequest, err error) {
 	for _, pr := range batch {
 		pr.Written <- err
 	}
 }
-

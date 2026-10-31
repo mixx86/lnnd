@@ -77,9 +77,9 @@ func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
 		logger.Daemon.Fatalf("error opening the requests file: %v", err)
 	}
 
-	return &RequestsWriter {
-		sm: sm,
-		reqFile: reqFile,
+	return &RequestsWriter{
+		sm:       sm,
+		reqFile:  reqFile,
 		reqCache: reqCache,
 	}
 }

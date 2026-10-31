@@ -10,38 +10,38 @@ import (
 )
 
 func DefaultNetworkConfig() NetworkConfig {
-    return NetworkConfig{
-        Transport: "tcp",
-        TCP: TCPConfig{
-            Port:            os.Getenv("TCP_PORT"),
-            KeepAlive:       true,
-            KeepAlivePeriod: 30 * time.Second,
-        },
-        QUIC: QUICConfig{
-            Port:            os.Getenv("QUIC_PORT"),
-            KeepAlivePeriod: 30 * time.Second,
-            MaxIdleTimeout:  60 * time.Second,
-        },
-    }
+	return NetworkConfig{
+		Transport: "tcp",
+		TCP: TCPConfig{
+			Port:            os.Getenv("TCP_PORT"),
+			KeepAlive:       true,
+			KeepAlivePeriod: 30 * time.Second,
+		},
+		QUIC: QUICConfig{
+			Port:            os.Getenv("QUIC_PORT"),
+			KeepAlivePeriod: 30 * time.Second,
+			MaxIdleTimeout:  60 * time.Second,
+		},
+	}
 }
 
 type TCPConfig struct {
-    Port            string        `mapstructure:"port"`
-    KeepAlive       bool          `mapstructure:"keep_alive"`
-    KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
+	Port            string        `mapstructure:"port"`
+	KeepAlive       bool          `mapstructure:"keep_alive"`
+	KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
 }
 
 type QUICConfig struct {
-    Port            string        `mapstructure:"port"`
-    KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
-    MaxIdleTimeout  time.Duration `mapstructure:"max_idle_timeout"`
+	Port            string        `mapstructure:"port"`
+	KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
+	MaxIdleTimeout  time.Duration `mapstructure:"max_idle_timeout"`
 }
 
 type NetworkConfig struct {
-    Transport string `mapstructure:"transport"`
+	Transport string `mapstructure:"transport"`
 
-    TCP TCPConfig `mapstructure:"tcp"`
-    QUIC QUICConfig `mapstructure:"quic"`
+	TCP  TCPConfig  `mapstructure:"tcp"`
+	QUIC QUICConfig `mapstructure:"quic"`
 }
 
 func DataDir() (string, error) {
