@@ -9,11 +9,20 @@ import (
 
 type Server struct {
     Transport Transport
-    Address   string
 
     Sessions  *peer.SessionManager
     Scheduler *sched.Service
     Identity  *identity.Service
+}
+
+func NewServer(t Transport, sm *peer.SessionManager, sched *sched.Service, i *identity.Service) *Server {
+	return &Server {
+		Transport: t,
+
+		Sessions: sm,
+		Scheduler: sched,
+		Identity: i,
+	}
 }
 
 func (s *Server) Listen() error {

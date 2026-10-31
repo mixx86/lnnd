@@ -2,11 +2,11 @@ package daemon
 
 import (
 	"fmt"
-	"log"
 
 	app "lnn/internal"
 	"lnn/internal/config"
 	"lnn/internal/identity"
+	"lnn/internal/logger"
 	"lnn/internal/sched"
 	"lnn/internal/store"
 
@@ -15,12 +15,10 @@ import (
 	"lnn/internal/peer"
 )
 
-// Daemon represents the main LNN daemon instance.
 type Daemon struct {
 	app.Services
 }
 
-// New creates and initializes a new Daemon instance.
 func New() (*Daemon, error) {
 	identityService, err := identity.NewService()
 	if err != nil {
@@ -48,14 +46,23 @@ func New() (*Daemon, error) {
 }
 
 func (d *Daemon) Start() error {
-	log.Println("Starting lnnd...")
+	logger.Daemon.Println("Starting lnnd...")
+
 
 	go d.Sched.Run()
 	go d.Writers.Run(d.Sched)
 
+	cfg := config.DefaultNetworkConfig()
+	transport, err := network.NewTransport(cfg)
+	if err != nil {
+		logger.Daemon.Fatalf("error: %v", err)
+	}
+
+	server := network.NewServer(transport, d.Services.Session, d.Services.Sched, d.Services.Identity)
+
 	go func() {
-		if err := network.ListenTCP(d.Session, d.Sched, d.Identity); err != nil {
-			log.Fatalf("TCP listener failed to start: %v", err)
+		if err := server.Listen(); err != nil {
+			logger.Daemon.Fatalf("Listener failed to start: %v", err)
 		}
 	}()
 	return ipc.ListenIPC(d.Services)

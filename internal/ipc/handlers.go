@@ -2,6 +2,7 @@
 package ipc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	app "lnn/internal"
@@ -61,7 +62,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				}
 				return
 			}
-			conn, err := transport.Dial()
+			conn, err := transport.Dial(context.Background(), req.IP)
 			if err != nil {
 				bytes, err := Response{
 					Ok:  false,
@@ -93,7 +94,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 			}
 
 			fmt.Printf("%v", req.Src)
-			err = network.SendTCP(session, protocol.Frame{
+			err = network.SendFrame(session, protocol.Frame{
 				Body: protocol.SymLinkRequest{
 					Src: req.Src,
 					Dst: req.Dst,
