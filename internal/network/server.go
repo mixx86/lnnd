@@ -15,7 +15,12 @@ type Server struct {
 	Identity  *identity.Service
 }
 
-func NewServer(t Transport, sm *peer.SessionManager, sched *sched.Service, i *identity.Service) *Server {
+func NewServer(
+	t Transport,
+	sm *peer.SessionManager,
+	sched *sched.Service,
+	i *identity.Service,
+) *Server {
 	return &Server{
 		Transport: t,
 

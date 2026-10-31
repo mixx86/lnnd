@@ -8,7 +8,15 @@ import (
 
 var (
 	// Daemon is the logger for the lnnd daemon process.
-	Daemon = log.New(os.Stdout, "\033[94m[lnnd]\033[0m ", log.LstdFlags|log.Lmsgprefix)
+	Daemon = log.New(
+		os.Stdout,
+		"\033[94m[lnnd]\033[0m ",
+		log.LstdFlags|log.Lmsgprefix,
+	)
 	// Protocol is the logger for protocol-level events.
-	Protocol = log.New(os.Stdout, "\033[31m[lnnp]\033[0m ", log.LstdFlags|log.Lmsgprefix)
+	Protocol = log.New(
+		os.Stdout,
+		"\033[31m[lnnp]\033[0m ",
+		log.LstdFlags|log.Lmsgprefix,
+	)
 )

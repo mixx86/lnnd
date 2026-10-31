@@ -50,7 +50,9 @@ func (s *Service) NextRequest() (queues.PendingRequest, error) {
 func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
 	q, ok := s.queues[queues.RequestsQueueID].(*queues.RequestsQueue)
 	if !ok {
-		return queues.PendingRequest{}, false, errors.New("error asserting the queue")
+		return queues.PendingRequest{}, false, errors.New(
+			"error asserting the queue",
+		)
 	}
 
 	req, ok := q.TryDequeue()

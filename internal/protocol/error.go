@@ -48,7 +48,7 @@ func ParseError(payload []byte) (Error, error) {
 	return Error{Code: code, Message: string(raw[:n])}, nil
 }
 
-func (Error) Type() MsgKind { return MsgError }
+func (Error) Type() MsgType { return MsgError }
 func (Error) Size() uint32  { return ErrorMessageSize }
 
 const (

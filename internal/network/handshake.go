@@ -9,8 +9,12 @@ import (
 )
 
 // OutBoundHandshake authenticates this node to a remote peer as the initiating side.
-func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManager) (*peer.Session, error) {
-	creds := i.Creds()
+func OutboundHandshake(
+	conn net.Conn,
+	i *identity.Service,
+	sm *peer.SessionManager,
+) (*peer.Session, error) {
+	creds := i.Credentials()
 	nonce, err := protocol.GenerateNonce()
 	if err != nil {
 		return nil, fmt.Errorf("error generating the nonce")
@@ -85,7 +89,11 @@ func OutboundHandshake(conn net.Conn, i *identity.Service, sm *peer.SessionManag
 
 // InBoundHandshake authenticates an incoming connection as the accepting side.
 // Returns a verified Peer registered in pm.
-func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManager) (*peer.Session, error) {
+func InboundHandshake(
+	conn net.Conn,
+	i *identity.Service,
+	pm *peer.SessionManager,
+) (*peer.Session, error) {
 	msg, err := ReadFrame(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving the HELLO message")
@@ -109,7 +117,7 @@ func InboundHandshake(conn net.Conn, i *identity.Service, pm *peer.SessionManage
 		return nil, fmt.Errorf("error generating the nonce")
 	}
 
-	creds := i.Creds()
+	creds := i.Credentials()
 	err = UnsafeSendFrame(conn, protocol.Frame{
 		Body: protocol.Hello{
 			ID:        creds.ID,

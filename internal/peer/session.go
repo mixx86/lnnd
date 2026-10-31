@@ -21,7 +21,11 @@ func NewRemoteNode(id uuid.UUID, pubKey ed25519.PublicKey) *RemoteNode {
 	}
 }
 
-func NewSession(id uuid.UUID, pubKey ed25519.PublicKey, conn net.Conn) *Session {
+func NewSession(
+	id uuid.UUID,
+	pubKey ed25519.PublicKey,
+	conn net.Conn,
+) *Session {
 	return &Session{
 		Remote: NewRemoteNode(id, pubKey),
 		Self:   NewSelfNode(),

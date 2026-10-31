@@ -13,10 +13,20 @@ import (
 	"lnn/internal/sched"
 )
 
-func HandleConn(conn net.Conn, transport Transport, sm *peer.SessionManager, schedService *sched.Service, idService *identity.Service) {
+func HandleConn(
+	conn net.Conn,
+	transport Transport,
+	sm *peer.SessionManager,
+	schedService *sched.Service,
+	idService *identity.Service,
+) {
 	defer func() {
 		if err := conn.Close(); err != nil {
-			logger.Daemon.Printf("Error closing connection %s: %v", conn.RemoteAddr(), err)
+			logger.Daemon.Printf(
+				"Error closing connection %s: %v",
+				conn.RemoteAddr(),
+				err,
+			)
 		}
 	}()
 	if keepAlive, ok := transport.(interface {
@@ -56,14 +66,19 @@ func HandleConn(conn net.Conn, transport Transport, sm *peer.SessionManager, sch
 	}
 }
 
-func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sched.Service) error {
+func HandleTCPMessage(
+	conn net.Conn,
+	msg protocol.Frame,
+	s *peer.Session,
+	sc *sched.Service,
+) error {
 	switch m := msg.Body.(type) {
-	case protocol.Ok:
+	case protocol.OK:
 		return nil
 	case protocol.Error:
 		return fmt.Errorf("peer %v error %d: %s", s.Remote.ID, m.Code, m.Message)
 
-	case protocol.SymLinkRequest:
+	case protocol.SymlinkRequest:
 		ibrequest, ok := msg.Body.(protocol.InboundRequest)
 		if !ok {
 			return fmt.Errorf("error parsing the inbound request.\n")
@@ -88,7 +103,7 @@ func HandleTCPMessage(conn net.Conn, msg protocol.Frame, s *peer.Session, sc *sc
 				}.WithTag(msg.Header.Tag))
 			}
 			SendFrame(s, protocol.Frame{
-				Body: protocol.Ok{},
+				Body: protocol.OK{},
 			}.WithTag(msg.Header.Tag))
 		}()
 		return nil

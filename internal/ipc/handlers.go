@@ -47,10 +47,12 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 		}
 		switch req.Type {
 		case "symreq":
-			transport, err := network.NewTransport(config.DefaultNetworkConfig())
+			transport, err := network.NewTransport(
+				config.DefaultNetworkConfig(),
+			)
 			if err != nil {
 				bytes, err := Response{
-					Ok:  false,
+					OK:  false,
 					Err: err.Error(),
 				}.Encode()
 				if err != nil {
@@ -65,7 +67,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 			conn, err := transport.Dial(context.Background(), req.IP)
 			if err != nil {
 				bytes, err := Response{
-					Ok:  false,
+					OK:  false,
 					Err: err.Error(),
 				}.Encode()
 				if err != nil {
@@ -77,10 +79,14 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				}
 				return
 			}
-			session, err := network.OutboundHandshake(conn, s.Identity, s.Session)
+			session, err := network.OutboundHandshake(
+				conn,
+				s.Identity,
+				s.Session,
+			)
 			if err != nil {
 				bytes, err := Response{
-					Ok:  false,
+					OK:  false,
 					Err: err.Error(),
 				}.Encode()
 				if err != nil {
@@ -95,7 +101,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 
 			fmt.Printf("%v", req.Src)
 			err = network.SendFrame(session, protocol.Frame{
-				Body: protocol.SymLinkRequest{
+				Body: protocol.SymlinkRequest{
 					Src: req.Src,
 					Dst: req.Dst,
 				},
@@ -104,7 +110,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				return
 			}
 
-			bytes, err := Response{Ok: true, Err: ""}.Encode()
+			bytes, err := Response{OK: true, Err: ""}.Encode()
 			if err != nil {
 				return
 			}

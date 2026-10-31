@@ -26,7 +26,7 @@ func testEntry(op OP_KIND, fields []byte) []byte {
 func testCheckpoint(entries ...[]byte) []byte {
 	var checksum uint32
 	for _, entry := range entries {
-		checksum += calculateCheckSum(entry)
+		checksum += calculateChecksum(entry)
 	}
 
 	fields := make([]byte, CHECKPOINT_CSUM_LEN)
@@ -91,7 +91,10 @@ func runRequestsFileRecovery(t *testing.T, path string) {
 
 	if err, recoverable := reqFile.checkEntries(); err != nil {
 		if recoverable {
-			t.Fatalf("unexpected recoverable requests entry in test WAL: %v", err)
+			t.Fatalf(
+				"unexpected recoverable requests entry in test WAL: %v",
+				err,
+			)
 		}
 		if err := reqFile.removeTail(); err != nil {
 			t.Fatal(err)

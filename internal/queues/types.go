@@ -43,5 +43,9 @@ type Queue[T any, U any] interface {
 	Dequeue() U
 	TryDequeue() (U, bool)
 	TryEnqueue(from *peer.RemoteNode, item T) (U, bool)
-	TryEnqueueWithTimeout(from *peer.RemoteNode, item T, timeout time.Duration) (U, bool)
+	TryEnqueueWithTimeout(
+		from *peer.RemoteNode,
+		item T,
+		timeout time.Duration,
+	) (U, bool)
 }

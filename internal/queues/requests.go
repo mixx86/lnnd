@@ -14,7 +14,8 @@ const defaultReqChannelSize uint16 = 4096
 
 func requestsQueueSize() uint16 {
 	if s := os.Getenv("LNND_REQ_QUEUE_SIZE"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 && n < math.MaxUint16 {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 &&
+			n < math.MaxUint16 {
 			return uint16(n)
 		}
 	}
@@ -27,7 +28,11 @@ func NewRequestsQueue() *RequestsQueue {
 	}
 }
 
-func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16) PendingRequest {
+func (q *RequestsQueue) makePending(
+	from *peer.RemoteNode,
+	req protocol.InboundRequest,
+	tag uint16,
+) PendingRequest {
 	return PendingRequest{
 		From:       from,
 		Req:        req,
@@ -37,7 +42,11 @@ func (q *RequestsQueue) makePending(from *peer.RemoteNode, req protocol.InboundR
 	}
 }
 
-func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16) (PendingRequest, bool) {
+func (q *RequestsQueue) TryEnqueue(
+	from *peer.RemoteNode,
+	req protocol.InboundRequest,
+	tag uint16,
+) (PendingRequest, bool) {
 	pr := q.makePending(from, req, tag)
 	select {
 	case q.queue <- pr:
@@ -47,7 +56,12 @@ func (q *RequestsQueue) TryEnqueue(from *peer.RemoteNode, req protocol.InboundRe
 	}
 }
 
-func (q *RequestsQueue) TryEnqueueWithTimeout(from *peer.RemoteNode, req protocol.InboundRequest, tag uint16, timeout time.Duration) (PendingRequest, bool) {
+func (q *RequestsQueue) TryEnqueueWithTimeout(
+	from *peer.RemoteNode,
+	req protocol.InboundRequest,
+	tag uint16,
+	timeout time.Duration,
+) (PendingRequest, bool) {
 	pr := q.makePending(from, req, tag)
 	select {
 	case q.queue <- pr:

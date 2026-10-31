@@ -27,7 +27,7 @@ func (m Hello) Encode() []byte {
 	return EncodeHello(m.ID, m.PublicKey)
 }
 
-func (Hello) Type() MsgKind {
+func (Hello) Type() MsgType {
 	return MsgHello
 }
 

@@ -12,7 +12,11 @@ import (
 	"os"
 )
 
-func (r *RequestsFile) writeEntry(bw *bufio.Writer, op OP_KIND, fields []byte) error {
+func (r *RequestsFile) writeEntry(
+	bw *bufio.Writer,
+	op OP_KIND,
+	fields []byte,
+) error {
 	entryLength := uint32(ENTRY_HEADER_LEN + len(fields))
 	header := encodeEntryHeader(op, entryLength)
 
@@ -26,7 +30,10 @@ func (r *RequestsFile) writeEntry(bw *bufio.Writer, op OP_KIND, fields []byte) e
 	return nil
 }
 
-func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched.Service) error {
+func (w *RequestsWriter) persistRequests(
+	batch []queues.PendingRequest,
+	s *sched.Service,
+) error {
 	reqIDs := make([]uint32, len(batch))
 	for i := range batch {
 		reqIDs[i] = w.reqFile.nextReqID()
@@ -97,7 +104,13 @@ func (w *RequestsWriter) persistRequests(batch []queues.PendingRequest, s *sched
 
 // WARNING: writeBatch does ONLY write in the buffer, make sure to call bw.Flush and f.Sync
 // once you're done writing unless you don't actually want to save the content.
-func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.PendingRequest, reqIDs []uint32, op OP_KIND) error {
+func (r *RequestsFile) writeBatch(
+	f *os.File,
+	bw *bufio.Writer,
+	batch []queues.PendingRequest,
+	reqIDs []uint32,
+	op OP_KIND,
+) error {
 	for idx, pr := range batch {
 		var fields []byte
 
@@ -109,16 +122,25 @@ func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.P
 
 			offset := 0
 
-			binary.BigEndian.PutUint16(req[offset:offset+REQUEST_REQ_TYPE_LEN], uint16(pr.Req.Type()))
+			binary.BigEndian.PutUint16(
+				req[offset:offset+REQUEST_REQ_TYPE_LEN],
+				uint16(pr.Req.Type()),
+			)
 			offset += REQUEST_REQ_TYPE_LEN
 
 			copy(req[offset:offset+REQUEST_PEER_UUID_LEN], pr.From.ID[:])
 			offset += REQUEST_PEER_UUID_LEN
 
-			binary.BigEndian.PutUint32(req[offset:offset+REQUEST_REQ_ID_LEN], reqIDs[idx])
+			binary.BigEndian.PutUint32(
+				req[offset:offset+REQUEST_REQ_ID_LEN],
+				reqIDs[idx],
+			)
 			offset += REQUEST_REQ_ID_LEN
 
-			binary.BigEndian.PutUint64(req[offset:offset+REQUEST_UNIX_TS_LEN], pr.EnqueuedAt)
+			binary.BigEndian.PutUint64(
+				req[offset:offset+REQUEST_UNIX_TS_LEN],
+				pr.EnqueuedAt,
+			)
 			offset += REQUEST_UNIX_TS_LEN
 
 			copy(req[offset:], reqPaths)
@@ -152,7 +174,10 @@ func (r *RequestsFile) writeBatch(f *os.File, bw *bufio.Writer, batch []queues.P
 	return nil
 }
 
-func (r *RequestsFile) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) {
+func (r *RequestsFile) checkpoint(
+	f *os.File,
+	bw *bufio.Writer,
+) (uint64, error) {
 	info, err := f.Stat()
 	if err != nil {
 		return 0, err
@@ -226,7 +251,7 @@ func (r *RequestsFile) checkpoint(f *os.File, bw *bufio.Writer) (uint64, error) 
 			)
 		}
 
-		checksum += calculateCheckSum(entry)
+		checksum += calculateChecksum(entry)
 		entryOffset += int64(entryLength)
 	}
 

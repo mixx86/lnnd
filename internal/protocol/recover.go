@@ -6,7 +6,7 @@ func (RecoverRequest) Encode() []byte {
 	return nil
 }
 
-func (RecoverRequest) Type() MsgKind {
+func (RecoverRequest) Type() MsgType {
 	return MsgRecoverRequest
 }
 

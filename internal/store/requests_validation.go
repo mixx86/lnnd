@@ -19,7 +19,9 @@ func (r *RequestsFile) checkFileHeader() error {
 		return ErrInvalidMagic
 	}
 
-	lco := binary.BigEndian.Uint64(header[F_HEADER_MAGIC_LEN : F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN])
+	lco := binary.BigEndian.Uint64(
+		header[F_HEADER_MAGIC_LEN : F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN],
+	)
 
 	info, err := r.file.Stat()
 	if err != nil {
@@ -100,7 +102,7 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 			recoverable = true
 		}
 
-		checksum += calculateCheckSum(entry)
+		checksum += calculateChecksum(entry)
 		offset += int64(entryLength)
 	}
 

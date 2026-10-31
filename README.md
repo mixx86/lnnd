@@ -17,7 +17,7 @@ See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
 ## Build
 
-**Requirements:** Go 1.21+
+**Requirements:** Go 1.26+
 
 ```bash
 go build -o lnnd ./cmd/lnnd
@@ -25,7 +25,11 @@ go build -o lnnd ./cmd/lnnd
 
 ## Configuration
 
-`lnnd` reads `configs/lnnd.conf` at startup (path relative to the working directory). The file uses `KEY=VALUE` lines; each pair is exported as an environment variable. Lines without `=` are ignored.
+`lnnd` reads `~/.lnn/lnnd.conf` at startup. The file uses `KEY=VALUE` lines; each pair is exported as an environment variable. Lines without `=` are ignored. [`configs/lnnd.conf`](configs/lnnd.conf) is an example to start from:
+
+```bash
+mkdir -p ~/.lnn && cp configs/lnnd.conf ~/.lnn/lnnd.conf
+```
 
 ```
 TCP_PORT=7878
@@ -38,6 +42,7 @@ LNND_IPC_SOCKET=/tmp/lnnd.sock
 | `LNND_IPC_SOCKET`     | Path to the Unix IPC socket                                      | —       |
 | `LNND_REQ_QUEUE_SIZE` | Capacity of the inbound requests queue (1–65534)                 | `4096`  |
 | `LNND_MAX_MEM`        | Memory limit; plain bytes or with a `KB`/`MB`/`GB` suffix        | `64MB`  |
+| `LNND_DISK_DEVICE`    | Block device whose load drives the write scheduler (`nvme0n1`, `/dev/sda`, …) | device holding the `lnnd` executable, else `~/.lnn` |
 | `QUIC_PORT`           | Reserved for the upcoming QUIC transport (not used yet)          | —       |
 
 ## Running
@@ -57,6 +62,8 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 | [docs/ipc.md](docs/ipc.md)                   | The Unix-socket contract used by the CLI |
 | [docs/trust-model.md](docs/trust-model.md)   | Peer permissions, templates, anti-flood rules, alerts *(planned)* |
 | [docs/filesystem.md](docs/filesystem.md)     | How remote links are presented on the local filesystem *(planned)* |
+| [docs/roadmap.md](docs/roadmap.md)           | Planned work, in phases |
+| [docs/coding-style.md](docs/coding-style.md) | Line length, comments and naming rules |
 
 ## Status
 

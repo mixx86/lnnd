@@ -52,6 +52,16 @@ func DataDir() (string, error) {
 	return filepath.Join(home, ".lnn"), nil
 }
 
+// ConfigPath lives in the data dir so the daemon finds it regardless of the
+// working directory it was started from.
+func ConfigPath() (string, error) {
+	dir, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "lnnd.conf"), nil
+}
+
 func LoadEnv(path string) (retErr error) {
 	envFile, err := os.Open(path)
 	if err != nil {

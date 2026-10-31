@@ -7,7 +7,11 @@ import (
 )
 
 func main() {
-	if err := config.LoadEnv("configs/lnnd.conf"); err != nil {
+	path, err := config.ConfigPath()
+	if err != nil {
+		log.Fatalf("Couldn't locate config: %v", err)
+	}
+	if err := config.LoadEnv(path); err != nil {
 		log.Fatalf("Couldn't load config: %v", err)
 	}
 	d, err := daemon.New()

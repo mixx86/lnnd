@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func HandleConnUNIX(conn net.Conn, s app.Services) {
+func HandleConn(conn net.Conn, s app.Services) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			log.Printf("Error closing IPC connection: %v", err)
@@ -42,6 +42,6 @@ func ListenIPC(s app.Services) error {
 			log.Printf("Error accepting IPC connection: %v", err)
 			continue
 		}
-		go HandleConnUNIX(conn, s)
+		go HandleConn(conn, s)
 	}
 }

@@ -38,7 +38,7 @@ Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc
 
 ```
 cmd/lnnd/           Entry point
-configs/lnnd.conf   Environment-style configuration
+configs/lnnd.conf   Example configuration (copy to ~/.lnn/lnnd.conf)
 internal/
   services.go       Services struct (package app) — the daemon's shared services
   config/           Env file loader, network config, data dir, memory limit parsing
@@ -73,11 +73,12 @@ type Services struct {
 
 ```
 main()
- └─ config.LoadEnv("configs/lnnd.conf")     load env vars
+ └─ config.LoadEnv("~/.lnn/lnnd.conf")      load env vars
  └─ daemon.New()
      ├─ identity.NewService()               load/generate UUID + Ed25519 keys
      ├─ peer.NewSessionManager()            empty session registry
-     ├─ sched.NewService()                  scheduler, queues, writer config
+     ├─ config.DiskDevice()                 pick the disk to monitor
+     ├─ sched.NewService(device)            scheduler, queues, writer config
      └─ store.NewRequestsWriter()           open requests WAL + requests cache
  └─ daemon.Start()
      ├─ go Sched.Run()                      disk-load sampler + writer dispatch loop
@@ -122,7 +123,7 @@ When an authenticated peer sends a `SYMLINK_REQUEST`:
 | `Elevated`      | between the thresholds (hysteresis band)      | 4                      | highest weight first   |
 | `Saturated`     | smoothed utilization > 90 % for ≥ 2 s         | 2                      | highest weight first   |
 
-**Disk monitor.** Utilization is sampled about once per second from the device's I/O busy time, smoothed with an exponential moving average (α = 0.2). The monitored device is currently fixed to `nvme0n1`. Every state change wakes the scheduler so limits are re-applied immediately.
+**Disk monitor.** Utilization is sampled about once per second from the device's I/O busy time, smoothed with an exponential moving average (α = 0.2). The monitored device comes from `LNND_DISK_DEVICE`; if unset, lnnd uses the block device holding its own executable, falling back to the one holding `~/.lnn` (e.g. when started with `go run`, which builds into a tmpfs). The device is resolved through `/proc/self/mountinfo`, so btrfs subvolumes and LUKS/LVM volumes map to their kernel name (`dm-0`). If no device can be found, disk monitoring is disabled and the disk load stays `Normal`. Every state change wakes the scheduler so limits are re-applied immediately.
 
 **Sources and weights.** Each write source has a weight; heavier sources are served first when the disk is under pressure.
 
@@ -216,6 +217,7 @@ Keys and UUID are persisted under `~/.lnn/` (directory mode `0700`, since it hol
   uuid              node UUID (plain text, mode 0600)
   id_ed25519        Ed25519 private key (raw bytes, mode 0600)
   id_ed25519.pub    Ed25519 public key (base64, mode 0644)
+  lnnd.conf         daemon configuration (see Configuration)
 ```
 
 Generated automatically on first run if missing. The request log files described under [Storage](#storage) live in the same directory.
@@ -224,7 +226,7 @@ Generated automatically on first run if missing. The request log files described
 
 ## Configuration
 
-`configs/lnnd.conf` is loaded at startup. Each `KEY=VALUE` line is exported as an environment variable; lines without `=` are ignored.
+`~/.lnn/lnnd.conf` is loaded at startup. Each `KEY=VALUE` line is exported as an environment variable; lines without `=` are ignored.
 
 | Variable              | Purpose                                                              | Default |
 |-----------------------|----------------------------------------------------------------------|---------|
@@ -232,4 +234,5 @@ Generated automatically on first run if missing. The request log files described
 | `LNND_IPC_SOCKET`     | Path to the Unix IPC socket                                          | —       |
 | `LNND_REQ_QUEUE_SIZE` | Capacity of the inbound requests queue (1–65534)                     | `4096`  |
 | `LNND_MAX_MEM`        | Memory limit; plain bytes or with `KB` / `MB` / `GB` suffix          | `64MB`  |
+| `LNND_DISK_DEVICE`    | Block device monitored by the scheduler                              | device holding the executable, else `~/.lnn` |
 | `QUIC_PORT`           | Reserved for the QUIC transport (not used yet)                       | —       |

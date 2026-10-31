@@ -53,7 +53,11 @@ import (
 func OpenRequestsFile(path string) (*RequestsFile, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		logger.Daemon.Fatalf("error: something went wrong while opening the requests file at: %v: %v", path, err)
+		logger.Daemon.Fatalf(
+			"error: something went wrong while opening the requests file at: %v: %v",
+			path,
+			err,
+		)
 	}
 
 	reqFile := &RequestsFile{
@@ -71,7 +75,10 @@ func OpenRequestsFile(path string) (*RequestsFile, error) {
 	}
 
 	if info.IsDir() {
-		logger.Daemon.Fatalf("error: requests shouldn't be a directory at %v", path)
+		logger.Daemon.Fatalf(
+			"error: requests shouldn't be a directory at %v",
+			path,
+		)
 	}
 
 	if info.Size() == 0 {
@@ -127,13 +134,22 @@ func (r *RequestsFile) overrideMagic() error {
 func (r *RequestsFile) writeFileHeader() {
 	var header [F_HEADER_TOTAL_LEN]byte
 	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
-	binary.BigEndian.PutUint64(header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN], F_HEADER_TOTAL_LEN)
-	binary.BigEndian.PutUint32(header[F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN+F_HEADER_REQ_ID_LEN], 0)
+	binary.BigEndian.PutUint64(
+		header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN],
+		F_HEADER_TOTAL_LEN,
+	)
+	binary.BigEndian.PutUint32(
+		header[F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN+F_HEADER_REQ_ID_LEN],
+		0,
+	)
 
 	var checkpoint [CHECKPOINT_LEN]byte
 	binary.BigEndian.PutUint32(checkpoint[:ENTRY_LENGTH_LEN], CHECKPOINT_LEN)
 	checkpoint[ENTRY_LENGTH_LEN] = uint8(OP_CHECKPOINT)
-	binary.BigEndian.PutUint32(checkpoint[ENTRY_HEADER_LEN:ENTRY_HEADER_LEN+CHECKPOINT_CSUM_LEN], uint32(0))
+	binary.BigEndian.PutUint32(
+		checkpoint[ENTRY_HEADER_LEN:ENTRY_HEADER_LEN+CHECKPOINT_CSUM_LEN],
+		uint32(0),
+	)
 
 	if _, err := r.file.Write(header[:]); err != nil {
 		logger.Daemon.Fatalf("error writing the file header: %v", err)
@@ -184,12 +200,12 @@ func encodeEntryHeader(op OP_KIND, entryLength uint32) [ENTRY_HEADER_LEN]byte {
 	return data
 }
 
-func calculateCheckSum(data []byte) uint32 {
-	var checkSum uint32
+func calculateChecksum(data []byte) uint32 {
+	var checksum uint32
 	for _, b := range data {
-		checkSum += uint32(b)
+		checksum += uint32(b)
 	}
-	return checkSum
+	return checksum
 }
 
 func (r *RequestsFile) resetToLastValidCheckpoint() error {
@@ -225,7 +241,8 @@ func (r *RequestsFile) removeTail() error {
 	checkpointEnd := int64(lco) + int64(CHECKPOINT_LEN)
 
 	_, entryLength, op, err := r.readEntry(lco, info.Size())
-	if err != nil || op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
+	if err != nil || op != OP_CHECKPOINT ||
+		entryLength != uint32(CHECKPOINT_LEN) {
 		return r.resetToLastValidCheckpoint()
 	}
 

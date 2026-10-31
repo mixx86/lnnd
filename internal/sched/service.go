@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-func NewService() *Service {
+func NewService(diskDevice string) *Service {
 	s := &Service{
 		queues: map[queues.QueueID]any{
 			queues.RequestsQueueID: queues.NewRequestsQueue(),
@@ -53,14 +53,16 @@ func NewService() *Service {
 	s.maxWriters = 8
 	s.maxWritersElevated = 4
 	s.maxWritersWhenOverloaded = 2
-	s.diskDevice = "nvme0n1"
+	s.diskDevice = diskDevice
 	s.schedulerWake = make(chan struct{}, 1)
 
 	return s
 }
 
 func (s *Service) Run() {
-	go s.sampleDisk()
+	if s.diskDevice != "" {
+		go s.sampleDisk()
+	}
 
 	for range s.schedulerWake {
 		s.dispatchWriters()

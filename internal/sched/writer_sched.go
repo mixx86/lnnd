@@ -86,7 +86,8 @@ func (s *Service) dispatchWriters() {
 
 		selected := 0
 
-		if s.diskLoad.State == DiskLoadSaturated || s.diskLoad.State == DiskLoadElevated {
+		if s.diskLoad.State == DiskLoadSaturated ||
+			s.diskLoad.State == DiskLoadElevated {
 			selected = s.selectHighestPriorityWriter()
 		}
 

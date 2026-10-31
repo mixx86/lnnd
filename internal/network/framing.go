@@ -43,7 +43,7 @@ func ReadFrame(r io.Reader) (protocol.Frame, error) {
 	case protocol.MsgChallengeResp:
 		payload = make([]byte, protocol.ChallengeRespPayloadSize)
 
-	case protocol.MsgSymLinkRequest:
+	case protocol.MsgSymlinkRequest:
 		if header.PayloadLength > 8192 ||
 			header.PayloadLength < 3 {
 			return protocol.Frame{}, errors.New("invalid payload size")
@@ -74,8 +74,8 @@ func ReadFrame(r io.Reader) (protocol.Frame, error) {
 	case protocol.MsgChallengeResp:
 		body, err = protocol.ParseChallengeResp(payload)
 
-	case protocol.MsgSymLinkRequest:
-		body, err = protocol.ParseSymLinkRequest(payload)
+	case protocol.MsgSymlinkRequest:
+		body, err = protocol.ParseSymlinkRequest(payload)
 	}
 
 	if err != nil {

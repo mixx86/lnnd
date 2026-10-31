@@ -26,7 +26,16 @@ func New() (*Daemon, error) {
 	}
 
 	sessionMgr := peer.NewSessionManager()
-	schedService := sched.NewService()
+
+	// A wrong guess only costs adaptive throttling, so the daemon keeps
+	// running without disk monitoring instead of refusing to start.
+	diskDevice, err := config.DiskDevice()
+	if err != nil {
+		logger.Daemon.Printf("disk monitoring disabled: %v", err)
+	} else {
+		logger.Daemon.Printf("monitoring disk load on %s", diskDevice)
+	}
+	schedService := sched.NewService(diskDevice)
 
 	dataDir, err := config.DataDir()
 	if err != nil {
@@ -57,7 +66,12 @@ func (d *Daemon) Start() error {
 		logger.Daemon.Fatalf("error: %v", err)
 	}
 
-	server := network.NewServer(transport, d.Services.Session, d.Services.Sched, d.Services.Identity)
+	server := network.NewServer(
+		transport,
+		d.Services.Session,
+		d.Services.Sched,
+		d.Services.Identity,
+	)
 
 	go func() {
 		if err := server.Listen(); err != nil {

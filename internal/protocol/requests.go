@@ -6,17 +6,17 @@ import (
 	"path/filepath"
 )
 
-// SymLinkRequest is sent by a peer requesting this node to create a symlink.
+// SymlinkRequest is sent by a peer requesting this node to create a symlink.
 // Dst is optional: if empty, the receiver decides the local path on --accept.
 // If Dst is set, the receiver cannot change it — only accept or reject.
-type SymLinkRequest struct {
+type SymlinkRequest struct {
 	Src string
 	Dst string
 }
 
 // Payload layout: [src_len:2][src][dst_len:2][dst]
 // Variable-length rather than fixed 8 KB to avoid padding on every request.
-func EncodeSymLinkRequest(src string, dst string) []byte {
+func EncodeSymlinkRequest(src string, dst string) []byte {
 	payloadSize := 2 + len(src)
 	if dst != "" {
 		payloadSize += 2 + len(dst)
@@ -37,13 +37,13 @@ func EncodeSymLinkRequest(src string, dst string) []byte {
 	return packet
 }
 
-func (r SymLinkRequest) Encode() []byte {
-	return EncodeSymLinkRequest(r.Src, r.Dst)
+func (r SymlinkRequest) Encode() []byte {
+	return EncodeSymlinkRequest(r.Src, r.Dst)
 }
 
-func (SymLinkRequest) Type() MsgKind { return MsgSymLinkRequest }
+func (SymlinkRequest) Type() MsgType { return MsgSymlinkRequest }
 
-func (r SymLinkRequest) Size() uint32 {
+func (r SymlinkRequest) Size() uint32 {
 	var payloadSize uint32
 	if r.Src != "" {
 		payloadSize += uint32(2 + len(r.Src))
@@ -56,16 +56,16 @@ func (r SymLinkRequest) Size() uint32 {
 	return payloadSize
 }
 
-func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
+func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	lenSrc := binary.BigEndian.Uint16(payload[:2])
 
 	if len(payload) < int(2+lenSrc) {
-		return SymLinkRequest{}, errors.New("payload too short for src")
+		return SymlinkRequest{}, errors.New("payload too short for src")
 	}
 
 	// 4096: matches Linux PATH_MAX; also caps memory from malformed payloads.
 	if lenSrc > 4096 {
-		return SymLinkRequest{}, errors.New("path too long for src")
+		return SymlinkRequest{}, errors.New("path too long for src")
 	}
 	srcStart := 2
 	srcEnd := srcStart + int(lenSrc)
@@ -78,7 +78,9 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 
 	case remaining <= 2:
 		// dst_len present but no dst bytes: malformed.
-		return SymLinkRequest{}, errors.New("incongruent data: dst_len present but dst missing")
+		return SymlinkRequest{}, errors.New(
+			"incongruent data: dst_len present but dst missing",
+		)
 
 	default:
 		lenDst := binary.BigEndian.Uint16(payload[srcEnd : srcEnd+2])
@@ -87,7 +89,7 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 		dstEnd := dstStart + int(lenDst)
 
 		if len(payload) < dstEnd {
-			return SymLinkRequest{}, errors.New("payload too short for dst")
+			return SymlinkRequest{}, errors.New("payload too short for dst")
 		}
 
 		Dst = payload[dstStart:dstEnd]
@@ -100,25 +102,29 @@ func ParseSymLinkRequest(payload []byte) (SymLinkRequest, error) {
 	}
 
 	if !filepath.IsAbs(srcStr) {
-		return SymLinkRequest{}, errors.New("relative paths not allowed for src")
+		return SymlinkRequest{}, errors.New(
+			"relative paths not allowed for src",
+		)
 	}
 
 	cleanSrc := filepath.Clean(srcStr)
 	cleanDst := ""
 	if dstStr != "" {
 		if !filepath.IsAbs(dstStr) {
-			return SymLinkRequest{}, errors.New("relative paths not allowed for dst")
+			return SymlinkRequest{}, errors.New(
+				"relative paths not allowed for dst",
+			)
 		}
 		cleanDst = filepath.Clean(dstStr)
 	}
 
-	return SymLinkRequest{
+	return SymlinkRequest{
 		Src: cleanSrc,
 		Dst: cleanDst,
 	}, nil
 }
 
-func (SymLinkRequest) inboundRequest() {}
+func (SymlinkRequest) inboundRequest() {}
 
 type Resolution struct {
 	LCLReqID uint32
@@ -139,7 +145,7 @@ func (r Resolution) Encode() []byte {
 	return buf
 }
 
-func (Resolution) Type() MsgKind { return MsgResolution }
+func (Resolution) Type() MsgType { return MsgResolution }
 func (Resolution) Size() uint32  { return 5 }
 
 func (Resolution) inboundRequest() {}

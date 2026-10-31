@@ -14,4 +14,17 @@ docker-stop:
 docker:
 	docker compose up
 
-.PHONY: run lnnd-docker docker-stop docker
+GOBIN ?= $(shell go env GOPATH)/bin
+GOLINES ?= $(GOBIN)/golines
+GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
+
+fmt:
+	gofmt -w ./cmd ./internal
+
+golines:
+	$(GOLINES) -m 80 -t 4 --base-formatter=gofmt -w ./cmd ./internal
+
+lll:
+	$(GOLANGCI_LINT) run ./...
+
+.PHONY: run lnnd-docker docker-stop docker fmt golines lll

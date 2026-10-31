@@ -15,7 +15,7 @@ type Request struct {
 
 // Response represents an IPC response message.
 type Response struct {
-	Ok  bool   `json:"ok"`
+	OK  bool   `json:"ok"`
 	Err string `json:"err,omitempty"`
 }
 

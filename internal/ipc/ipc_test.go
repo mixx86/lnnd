@@ -7,7 +7,9 @@ import (
 // --- ParseRequest ---
 
 func TestParseRequest_valid(t *testing.T) {
-	data := []byte(`{"op":"link","type":"symreq","src":"192.168.1.34://path/to/file","dst":"./link"}`)
+	data := []byte(
+		`{"op":"link","type":"symreq","src":"192.168.1.34://path/to/file","dst":"./link"}`,
+	)
 	req, err := ParseRequest(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -32,7 +34,9 @@ func TestParseRequest_valid(t *testing.T) {
 
 func TestParseRequest_ignoresIPField(t *testing.T) {
 	// IP is derived by Validate; a client must not be able to set it directly.
-	data := []byte(`{"op":"link","type":"symreq","src":"192.168.1.34://f","ip":"10.0.0.1"}`)
+	data := []byte(
+		`{"op":"link","type":"symreq","src":"192.168.1.34://f","ip":"10.0.0.1"}`,
+	)
 	req, err := ParseRequest(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,7 +118,11 @@ func TestValidate_pathNormalized(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/path/to/file" {
-		t.Errorf("path not normalized: got %q, want %q", req.Src, "/path/to/file")
+		t.Errorf(
+			"path not normalized: got %q, want %q",
+			req.Src,
+			"/path/to/file",
+		)
 	}
 }
 
@@ -141,7 +149,7 @@ func TestValidate_emptyPathBecomesRoot(t *testing.T) {
 // --- Response.Encode ---
 
 func TestResponseEncode_ok(t *testing.T) {
-	data, err := Response{Ok: true}.Encode()
+	data, err := Response{OK: true}.Encode()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +159,7 @@ func TestResponseEncode_ok(t *testing.T) {
 }
 
 func TestResponseEncode_error(t *testing.T) {
-	data, err := Response{Ok: false, Err: "boom"}.Encode()
+	data, err := Response{OK: false, Err: "boom"}.Encode()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

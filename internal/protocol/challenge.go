@@ -33,7 +33,7 @@ func ParseChallenge(payload []byte) (Challenge, error) {
 	return parsedPayload, nil
 }
 
-func (Challenge) Type() MsgKind { return MsgChallenge }
+func (Challenge) Type() MsgType { return MsgChallenge }
 func (Challenge) Size() uint32  { return ChallengePayloadSize }
 
 // ChallengeRespPayloadSize is the size in bytes of a challenge response (Ed25519 signature).
@@ -65,5 +65,5 @@ func ParseChallengeResp(payload []byte) (ChallengeResp, error) {
 	return parsedPayload, nil
 }
 
-func (ChallengeResp) Type() MsgKind { return MsgChallengeResp }
+func (ChallengeResp) Type() MsgType { return MsgChallengeResp }
 func (ChallengeResp) Size() uint32  { return ChallengeRespPayloadSize }

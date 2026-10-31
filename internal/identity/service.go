@@ -18,7 +18,7 @@ import (
 
 // NewService creates a new IdentityService by loading or generating local credentials.
 func NewService() (*Service, error) {
-	creds, err := LoadLocalCreds()
+	creds, err := LoadLocalCredentials()
 
 	if err != nil {
 		return &Service{}, err
@@ -28,13 +28,13 @@ func NewService() (*Service, error) {
 	}, nil
 }
 
-// Creds returns the local node credentials.
-func (i *Service) Creds() Credentials {
+// Credentials returns the local node credentials.
+func (i *Service) Credentials() Credentials {
 	return i.creds
 }
 
-// LoadLocalCreds loads the node's UUID and cryptographic keys from disk, generating them if missing.
-func LoadLocalCreds() (Credentials, error) {
+// LoadLocalCredentials loads the node's UUID and cryptographic keys from disk, generating them if missing.
+func LoadLocalCredentials() (Credentials, error) {
 	id, err := InitUUID()
 	if err != nil {
 		return Credentials{}, err

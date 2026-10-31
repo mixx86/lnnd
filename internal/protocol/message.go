@@ -7,17 +7,17 @@ import (
 )
 
 // Message types for the LNN protocol.
-type MsgKind uint16
+type MsgType uint16
 
 const (
-	MsgHello MsgKind = iota
+	MsgHello MsgType = iota
 	MsgChallenge
 	MsgChallengeResp
 	MsgError
-	// TODO: change name to MsgSymLink
+	// TODO: change name to MsgSymlink
 	MsgLinkSym
 	MsgLinkHard
-	MsgSymLinkRequest
+	MsgSymlinkRequest
 	MsgHardLinkRequest
 	MsgOk
 	MsgRecoverRequest
@@ -40,7 +40,7 @@ func (m Frame) WithTag(tag uint16) Frame {
 	return m
 }
 
-func (h Header) Encode(msgType MsgKind, payloadLen uint32) []byte {
+func (h Header) Encode(msgType MsgType, payloadLen uint32) []byte {
 	buf := make([]byte, HeaderSize)
 	copy(buf[OffsetMagic:OffsetMagic+MagicSize], protocolMagic[:])
 	buf[OffsetVersion] = protocolVersion
@@ -52,7 +52,7 @@ func (h Header) Encode(msgType MsgKind, payloadLen uint32) []byte {
 
 type Payload interface {
 	Encode() []byte
-	Type() MsgKind
+	Type() MsgType
 	Size() uint32
 }
 
@@ -61,25 +61,25 @@ type InboundRequest interface {
 	inboundRequest()
 }
 
-type Ok struct{}
+type OK struct{}
 
-func (Ok) Encode() []byte {
+func (OK) Encode() []byte {
 	packet := make([]byte, 0)
 	return packet
 }
 
-func (Ok) Type() MsgKind {
+func (OK) Type() MsgType {
 	return MsgOk
 }
 
-func (Ok) Size() uint32 {
+func (OK) Size() uint32 {
 	return 0
 }
 
 type Header struct {
 	Magic         [4]byte
 	Version       uint8
-	Type          MsgKind
+	Type          MsgType
 	Tag           uint16
 	PayloadLength uint32
 }
@@ -114,9 +114,13 @@ func ReadHeader(r io.Reader) (Header, error) {
 
 	copy(header.Magic[:], headerBuf[OffsetMagic:OffsetVersion])
 	header.Version = headerBuf[OffsetVersion]
-	header.Type = MsgKind(headerBuf[OffsetType])
-	header.Tag = binary.BigEndian.Uint16(headerBuf[OffsetTag : OffsetTag+TagSize])
-	header.PayloadLength = binary.BigEndian.Uint32(headerBuf[OffsetLen : OffsetLen+LenSize])
+	header.Type = MsgType(headerBuf[OffsetType])
+	header.Tag = binary.BigEndian.Uint16(
+		headerBuf[OffsetTag : OffsetTag+TagSize],
+	)
+	header.PayloadLength = binary.BigEndian.Uint32(
+		headerBuf[OffsetLen : OffsetLen+LenSize],
+	)
 
 	if header.Magic != [4]byte{0x4C, 0x4E, 0x4E, 0x00} {
 		return header, errors.New("invalid magic")
