@@ -25,11 +25,7 @@ go build -o lnnd ./cmd/lnnd
 
 ## Configuration
 
-`lnnd` reads `~/.lnn/lnnd.conf` at startup. The file uses `KEY=VALUE` lines; each pair is exported as an environment variable. Lines without `=` are ignored. [`configs/lnnd.conf`](configs/lnnd.conf) is an example to start from:
-
-```bash
-mkdir -p ~/.lnn && cp configs/lnnd.conf ~/.lnn/lnnd.conf
-```
+`lnnd` reads `~/.lnn/lnnd.conf` at startup. The file uses `KEY=VALUE` lines; each pair is exported as an environment variable. Lines without `=` are ignored. If the file does not exist, lnnd creates it from [`configs/lnnd.conf`](configs/lnnd.conf), which is embedded in the binary.
 
 ```
 TCP_PORT=7878

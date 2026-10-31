@@ -38,7 +38,7 @@ Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc
 
 ```
 cmd/lnnd/           Entry point
-configs/lnnd.conf   Example configuration (copy to ~/.lnn/lnnd.conf)
+configs/            Default lnnd.conf, embedded and written to ~/.lnn/ if missing
 internal/
   services.go       Services struct (package app) — the daemon's shared services
   config/           Env file loader, network config, data dir, memory limit parsing

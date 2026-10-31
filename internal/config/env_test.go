@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestRequestsQueueMaxBytes(t *testing.T) {
 	const mib = 1024 * 1024
@@ -24,5 +28,27 @@ func TestRequestsQueueMaxBytes(t *testing.T) {
 				t.Errorf("got %d, want %d", got, c.want)
 			}
 		})
+	}
+}
+
+func TestEnsureConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".lnn", "lnnd.conf")
+
+	created, err := EnsureConfig(path, []byte("A=1\n"))
+	if err != nil || !created {
+		t.Fatalf("first call: created=%v err=%v", created, err)
+	}
+
+	created, err = EnsureConfig(path, []byte("A=2\n"))
+	if err != nil || created {
+		t.Fatalf("second call: created=%v err=%v", created, err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "A=1\n" {
+		t.Errorf("existing config overwritten: %q", got)
 	}
 }

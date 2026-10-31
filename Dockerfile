@@ -12,7 +12,6 @@ FROM alpine:latest
 
 WORKDIR /app
 COPY --from=builder /app/lnnd .
-COPY configs/lnnd.conf /root/.lnn/lnnd.conf
 
 EXPOSE 5771
 

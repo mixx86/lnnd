@@ -2,6 +2,8 @@ package config
 
 import (
 	"bufio"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,22 +28,22 @@ func DefaultNetworkConfig() NetworkConfig {
 }
 
 type TCPConfig struct {
-	Port            string        `mapstructure:"port"`
-	KeepAlive       bool          `mapstructure:"keep_alive"`
-	KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
+	Port            string
+	KeepAlive       bool
+	KeepAlivePeriod time.Duration
 }
 
 type QUICConfig struct {
-	Port            string        `mapstructure:"port"`
-	KeepAlivePeriod time.Duration `mapstructure:"keep_alive_period"`
-	MaxIdleTimeout  time.Duration `mapstructure:"max_idle_timeout"`
+	Port            string
+	KeepAlivePeriod time.Duration
+	MaxIdleTimeout  time.Duration
 }
 
 type NetworkConfig struct {
-	Transport string `mapstructure:"transport"`
+	Transport string
 
-	TCP  TCPConfig  `mapstructure:"tcp"`
-	QUIC QUICConfig `mapstructure:"quic"`
+	TCP  TCPConfig
+	QUIC QUICConfig
 }
 
 func DataDir() (string, error) {
@@ -60,6 +62,26 @@ func ConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "lnnd.conf"), nil
+}
+
+// EnsureConfig reports whether it created the file. O_EXCL keeps an
+// existing config untouched even if two daemons start at the same time.
+func EnsureConfig(path string, defaults []byte) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return false, err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, fs.ErrExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := f.Write(defaults); err != nil {
+		_ = f.Close()
+		return false, err
+	}
+	return true, f.Close()
 }
 
 func LoadEnv(path string) (retErr error) {
