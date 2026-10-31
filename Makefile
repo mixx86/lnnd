@@ -14,4 +14,4 @@ docker-stop:
 docker:
 	docker compose up
 
-.PHONY: lnnd-run lnnd-docker lnn-run docker-stop docker
+.PHONY: run lnnd-docker docker-stop docker
