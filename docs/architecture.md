@@ -135,7 +135,7 @@ When an authenticated peer sends a `SYMLINK_REQUEST`:
 
 `RecordWriteResult` keeps a per-source baseline of write latency (normalized to the expected size, EMA with α = 0.1) for adaptive tuning.
 
-**Backpressure.** Each queue has a pressure flag (`UpdateQueuePressure`). While a queue is pressured, `SubmitRequest` waits up to 2 s for it to clear and then fails with `ErrOverloaded`.
+**Backpressure.** Each queue has a pressure flag (`UpdateQueuePressure`), raised when its queued bytes reach the queue's `MaxQueuedBytes` (owned by `queues.QueueConfig`; for requests, `LNND_REQ_QUEUE_MAX_BYTES`, default ¼ of `LNND_MAX_MEM`). `SubmitRequest` adds each request's size after enqueueing and `NextRequest` / `TryNextRequest` subtract it after dequeueing. While a queue is pressured, `SubmitRequest` waits up to 2 s for it to clear and then fails with `ErrOverloaded`.
 
 **Timeouts** (`sched/config.go`): enqueue 100 ms, write confirmation 10 s, pressure wait 2 s.
 
@@ -234,5 +234,6 @@ Generated automatically on first run if missing. The request log files described
 | `LNND_IPC_SOCKET`     | Path to the Unix IPC socket                                          | —       |
 | `LNND_REQ_QUEUE_SIZE` | Capacity of the inbound requests queue (1–65534)                     | `4096`  |
 | `LNND_MAX_MEM`        | Memory limit; plain bytes or with `KB` / `MB` / `GB` suffix          | `64MB`  |
+| `LNND_REQ_QUEUE_MAX_BYTES` | Requests queue byte limit before backpressure; same format as `LNND_MAX_MEM` | ¼ of `LNND_MAX_MEM` |
 | `LNND_DISK_DEVICE`    | Block device monitored by the scheduler                              | device holding the executable, else `~/.lnn` |
 | `QUIC_PORT`           | Reserved for the QUIC transport (not used yet)                       | —       |

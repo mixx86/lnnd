@@ -56,12 +56,12 @@ func (w *RequestsWriter) writeRecoveredRequest(
 	f *os.File,
 	request []byte,
 ) error {
-	if len(request) < ENTRY_HEADER_LEN {
+	if len(request) < entryHeaderLen {
 		return fmt.Errorf("invalid recovered request length %d", len(request))
 	}
 
 	entryLength := binary.BigEndian.Uint32(
-		request[:ENTRY_LENGTH_LEN],
+		request[:entryLengthLen],
 	)
 
 	if int(entryLength) != len(request) {
@@ -72,10 +72,10 @@ func (w *RequestsWriter) writeRecoveredRequest(
 		)
 	}
 
-	if OP_KIND(request[ENTRY_LENGTH_LEN]) != OP_REQUEST {
+	if opKind(request[entryLengthLen]) != opRequest {
 		return fmt.Errorf(
 			"recovered entry is not a request: op=%d",
-			request[ENTRY_LENGTH_LEN],
+			request[entryLengthLen],
 		)
 	}
 

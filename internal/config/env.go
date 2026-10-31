@@ -119,3 +119,14 @@ func MaxMemFromEnv() uint64 {
 
 	return n
 }
+
+// RequestsQueueMaxBytes defaults to a quarter of LNND_MAX_MEM: it leaves
+// room for the files queue, and it has to trigger before the requests
+// channel fills with long paths (~34 MB worst case), otherwise the limit
+// would be redundant with ErrOverloaded.
+func RequestsQueueMaxBytes() int64 {
+	if n, ok := parseBytes(os.Getenv("LNND_REQ_QUEUE_MAX_BYTES")); ok {
+		return int64(n)
+	}
+	return int64(MaxMemFromEnv() / 4)
+}

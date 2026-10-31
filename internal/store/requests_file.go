@@ -122,7 +122,7 @@ func OpenRequestsFile(path string) (*RequestsFile, error) {
 
 func (r *RequestsFile) overrideMagic() error {
 	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], F_HEADER_MAGIC)
+	binary.BigEndian.PutUint32(buf[:], fileHeaderMagic)
 	if _, err := r.file.WriteAt(buf[:], 0); err != nil {
 		return err
 	}
@@ -132,22 +132,22 @@ func (r *RequestsFile) overrideMagic() error {
 // writeFileHeader assumes the file is empty; thus, it creates a first
 // checkpoint, which is not part of the file header.
 func (r *RequestsFile) writeFileHeader() {
-	var header [F_HEADER_TOTAL_LEN]byte
-	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
+	var header [fileHeaderLen]byte
+	binary.BigEndian.PutUint32(header[:fileHeaderMagicLen], fileHeaderMagic)
 	binary.BigEndian.PutUint64(
-		header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN],
-		F_HEADER_TOTAL_LEN,
+		header[fileHeaderMagicLen:fileHeaderMagicLen+fileHeaderLCOLen],
+		fileHeaderLen,
 	)
 	binary.BigEndian.PutUint32(
-		header[F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN+F_HEADER_REQ_ID_LEN],
+		header[fileHeaderMagicLen+fileHeaderLCOLen:fileHeaderMagicLen+fileHeaderLCOLen+fileHeaderReqIDLen],
 		0,
 	)
 
-	var checkpoint [CHECKPOINT_LEN]byte
-	binary.BigEndian.PutUint32(checkpoint[:ENTRY_LENGTH_LEN], CHECKPOINT_LEN)
-	checkpoint[ENTRY_LENGTH_LEN] = uint8(OP_CHECKPOINT)
+	var checkpoint [checkpointLen]byte
+	binary.BigEndian.PutUint32(checkpoint[:entryLengthLen], checkpointLen)
+	checkpoint[entryLengthLen] = uint8(opCheckpoint)
 	binary.BigEndian.PutUint32(
-		checkpoint[ENTRY_HEADER_LEN:ENTRY_HEADER_LEN+CHECKPOINT_CSUM_LEN],
+		checkpoint[entryHeaderLen:entryHeaderLen+checkpointChecksumLen],
 		uint32(0),
 	)
 
@@ -164,13 +164,13 @@ func (r *RequestsFile) writeFileHeader() {
 }
 
 func (r *RequestsFile) setLco(lco uint64) error {
-	var buf [F_HEADER_LCO_LEN]byte
+	var buf [fileHeaderLCOLen]byte
 
 	binary.BigEndian.PutUint64(buf[:], lco)
 
 	if _, err := r.file.WriteAt(
 		buf[:],
-		F_HEADER_MAGIC_LEN,
+		fileHeaderMagicLen,
 	); err != nil {
 		return fmt.Errorf("writing lco: %w", err)
 	}
@@ -179,23 +179,23 @@ func (r *RequestsFile) setLco(lco uint64) error {
 }
 
 func (r *RequestsFile) getLco() (int64, error) {
-	var b [F_HEADER_LCO_LEN]byte
+	var b [fileHeaderLCOLen]byte
 
-	if _, err := r.file.ReadAt(b[:], F_HEADER_MAGIC_LEN); err != nil {
+	if _, err := r.file.ReadAt(b[:], fileHeaderMagicLen); err != nil {
 		return 0, err
 	}
 
 	return int64(binary.BigEndian.Uint64(b[:])), nil
 }
 
-func encodeEntryHeader(op OP_KIND, entryLength uint32) [ENTRY_HEADER_LEN]byte {
-	var data [ENTRY_HEADER_LEN]byte
+func encodeEntryHeader(op opKind, entryLength uint32) [entryHeaderLen]byte {
+	var data [entryHeaderLen]byte
 
 	binary.BigEndian.PutUint32(
-		data[:ENTRY_LENGTH_LEN],
+		data[:entryLengthLen],
 		entryLength,
 	)
-	data[ENTRY_LENGTH_LEN] = uint8(op)
+	data[entryLengthLen] = uint8(op)
 
 	return data
 }
@@ -214,7 +214,7 @@ func (r *RequestsFile) resetToLastValidCheckpoint() error {
 		return err
 	}
 
-	checkpointEnd := int64(checkpoint) + int64(CHECKPOINT_LEN)
+	checkpointEnd := int64(checkpoint) + int64(checkpointLen)
 
 	if err := r.file.Truncate(checkpointEnd); err != nil {
 		return err
@@ -238,11 +238,11 @@ func (r *RequestsFile) removeTail() error {
 		return err
 	}
 
-	checkpointEnd := int64(lco) + int64(CHECKPOINT_LEN)
+	checkpointEnd := int64(lco) + int64(checkpointLen)
 
 	_, entryLength, op, err := r.readEntry(lco, info.Size())
-	if err != nil || op != OP_CHECKPOINT ||
-		entryLength != uint32(CHECKPOINT_LEN) {
+	if err != nil || op != opCheckpoint ||
+		entryLength != uint32(checkpointLen) {
 		return r.resetToLastValidCheckpoint()
 	}
 
@@ -270,7 +270,7 @@ func (r *RequestsFile) removeTail() error {
 		// The initial checkpoint is the only checkpoint and there is
 		// therefore nothing before it to recover.
 		if errors.Is(err, ErrNoPreviousCheckpoint) {
-			if err := r.file.Truncate(F_HEADER_TOTAL_LEN + CHECKPOINT_LEN); err != nil {
+			if err := r.file.Truncate(fileHeaderLen + checkpointLen); err != nil {
 				return err
 			}
 
@@ -281,7 +281,7 @@ func (r *RequestsFile) removeTail() error {
 	}
 
 	previousCheckpointEnd :=
-		previousCheckpoint + int64(CHECKPOINT_LEN)
+		previousCheckpoint + int64(checkpointLen)
 
 	if err := r.file.Truncate(previousCheckpointEnd); err != nil {
 		return fmt.Errorf(

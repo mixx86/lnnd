@@ -44,25 +44,34 @@ func (s *Service) WaitForPressureChange() {
 	s.pressureChangeCond.L.Unlock()
 }
 
-func (s *Service) UpdateQueuePressure(
-	queueID queues.QueueID,
-	queuedBytes int64,
-) {
+// UpdateQueuePressure takes a delta rather than a total so that enqueue
+// and dequeue paths can report their own sizes without coordinating.
+func (s *Service) UpdateQueuePressure(queueID queues.QueueID, delta int64) {
 	pressure, ok := s.queuePressure[queueID]
 	if !ok {
 		return
 	}
 
-	pressure.QueuedBytes.Store(queuedBytes)
-	pressured := queuedBytes >= pressure.MaxQueuedBytes
-	wasPressured := pressure.Pressured.Swap(pressured)
+	total := pressure.Queue.QueuedBytes.Add(delta)
+	for {
+		pressured := total >= pressure.Queue.MaxQueuedBytes
+		wasPressured := pressure.Pressured.Swap(pressured)
 
-	if wasPressured && !pressured {
-		s.pressureReleaseCond.Broadcast()
-	}
+		if wasPressured && !pressured {
+			s.pressureReleaseCond.Broadcast()
+		}
+		if wasPressured != pressured {
+			s.pressureChangeCond.Broadcast()
+		}
 
-	if wasPressured != pressured {
-		s.pressureChangeCond.Broadcast()
+		// A concurrent update may have swapped the flag between our Add
+		// and Swap; re-evaluate until the flag matches the latest total,
+		// or a stale "pressured" could outlive an empty queue.
+		current := pressure.Queue.QueuedBytes.Load()
+		if current == total {
+			return
+		}
+		total = current
 	}
 }
 

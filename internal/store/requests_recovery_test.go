@@ -13,8 +13,8 @@ type walLayout struct {
 	eof int64
 }
 
-func testEntry(op OP_KIND, fields []byte) []byte {
-	entryLength := uint32(ENTRY_HEADER_LEN + len(fields))
+func testEntry(op opKind, fields []byte) []byte {
+	entryLength := uint32(entryHeaderLen + len(fields))
 	header := encodeEntryHeader(op, entryLength)
 
 	entry := make([]byte, 0, entryLength)
@@ -29,32 +29,32 @@ func testCheckpoint(entries ...[]byte) []byte {
 		checksum += calculateChecksum(entry)
 	}
 
-	fields := make([]byte, CHECKPOINT_CSUM_LEN)
+	fields := make([]byte, checkpointChecksumLen)
 	binary.BigEndian.PutUint32(fields, checksum)
-	return testEntry(OP_CHECKPOINT, fields)
+	return testEntry(opCheckpoint, fields)
 }
 
 func writeTestWAL(t *testing.T, path string) walLayout {
 	t.Helper()
 
-	entry1 := testEntry(OP_ACCEPTED, []byte{0, 0, 0, 1})
-	entry2 := testEntry(OP_ACCEPTED, []byte{0, 0, 0, 2})
+	entry1 := testEntry(opAccepted, []byte{0, 0, 0, 1})
+	entry2 := testEntry(opAccepted, []byte{0, 0, 0, 2})
 	initialCheckpoint := testCheckpoint()
 	checkpoint1 := testCheckpoint(entry1)
 	checkpoint2 := testCheckpoint(entry2)
 
-	cp1 := int64(F_HEADER_TOTAL_LEN + len(initialCheckpoint) + len(entry1))
+	cp1 := int64(fileHeaderLen + len(initialCheckpoint) + len(entry1))
 	cp2 := cp1 + int64(len(checkpoint1)+len(entry2))
 	eof := cp2 + int64(len(checkpoint2))
 
-	var header [F_HEADER_TOTAL_LEN]byte
-	binary.BigEndian.PutUint32(header[:F_HEADER_MAGIC_LEN], F_HEADER_MAGIC)
+	var header [fileHeaderLen]byte
+	binary.BigEndian.PutUint32(header[:fileHeaderMagicLen], fileHeaderMagic)
 	binary.BigEndian.PutUint64(
-		header[F_HEADER_MAGIC_LEN:F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN],
+		header[fileHeaderMagicLen:fileHeaderMagicLen+fileHeaderLCOLen],
 		uint64(cp2),
 	)
 	binary.BigEndian.PutUint32(
-		header[F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN:F_HEADER_TOTAL_LEN],
+		header[fileHeaderMagicLen+fileHeaderLCOLen:fileHeaderLen],
 		2,
 	)
 
@@ -111,8 +111,8 @@ func readFileLCO(t *testing.T, path string) uint64 {
 	}
 	defer f.Close()
 
-	var buf [F_HEADER_LCO_LEN]byte
-	if _, err := f.ReadAt(buf[:], F_HEADER_MAGIC_LEN); err != nil {
+	var buf [fileHeaderLCOLen]byte
+	if _, err := f.ReadAt(buf[:], fileHeaderMagicLen); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,7 +165,7 @@ func TestRequestsFileRecoveryRollsBackTruncatedFinalCheckpoint(t *testing.T) {
 
 	runRequestsFileRecovery(t, path)
 
-	assertWALState(t, path, uint64(layout.cp1), layout.cp1+CHECKPOINT_LEN)
+	assertWALState(t, path, uint64(layout.cp1), layout.cp1+checkpointLen)
 }
 
 func TestRequestsFileRecoveryTruncatesGarbageAfterCheckpoint(t *testing.T) {

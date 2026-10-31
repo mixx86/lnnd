@@ -42,6 +42,7 @@ LNND_IPC_SOCKET=/tmp/lnnd.sock
 | `LNND_IPC_SOCKET`     | Path to the Unix IPC socket                                      | —       |
 | `LNND_REQ_QUEUE_SIZE` | Capacity of the inbound requests queue (1–65534)                 | `4096`  |
 | `LNND_MAX_MEM`        | Memory limit; plain bytes or with a `KB`/`MB`/`GB` suffix        | `64MB`  |
+| `LNND_REQ_QUEUE_MAX_BYTES` | Bytes queued in the requests queue before backpressure; same format as `LNND_MAX_MEM` | ¼ of `LNND_MAX_MEM` |
 | `LNND_DISK_DEVICE`    | Block device whose load drives the write scheduler (`nvme0n1`, `/dev/sda`, …) | device holding the `lnnd` executable, else `~/.lnn` |
 | `QUIC_PORT`           | Reserved for the upcoming QUIC transport (not used yet)          | —       |
 

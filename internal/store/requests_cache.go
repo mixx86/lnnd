@@ -14,9 +14,9 @@ import (
 // file size = 16 + capacity*6
 
 const (
-	CACHE_REQ_ID_LEN = 4
-	CACHE_TAG_LEN    = 2
-	CACHE_ENTRY_LEN  = CACHE_REQ_ID_LEN + CACHE_TAG_LEN
+	cacheReqIDLen = 4
+	cacheTagLen   = 2
+	cacheEntryLen = cacheReqIDLen + cacheTagLen
 )
 
 func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
@@ -49,11 +49,11 @@ func (c *RequestsCache) load() error {
 	}
 
 	size := info.Size()
-	completeSize := size - (size % CACHE_ENTRY_LEN)
+	completeSize := size - (size % cacheEntryLen)
 
-	var buf [CACHE_ENTRY_LEN]byte
+	var buf [cacheEntryLen]byte
 
-	for offset := int64(0); offset < completeSize; offset += CACHE_ENTRY_LEN {
+	for offset := int64(0); offset < completeSize; offset += cacheEntryLen {
 		if _, err := c.file.ReadAt(buf[:], offset); err != nil {
 			return fmt.Errorf(
 				"reading cache at offset %d: %w",
@@ -62,8 +62,8 @@ func (c *RequestsCache) load() error {
 			)
 		}
 
-		reqID := binary.BigEndian.Uint32(buf[:CACHE_REQ_ID_LEN])
-		tag := binary.BigEndian.Uint16(buf[CACHE_REQ_ID_LEN:])
+		reqID := binary.BigEndian.Uint32(buf[:cacheReqIDLen])
+		tag := binary.BigEndian.Uint16(buf[cacheReqIDLen:])
 
 		c.entries[reqID] = tag
 	}
@@ -91,17 +91,17 @@ func (c *RequestsCache) Put(reqID uint32, tag uint16, flush bool) error {
 	c.entries[reqID] = tag
 
 	if flush == true {
-		sizeEntries := ((len(c.entries)) * CACHE_ENTRY_LEN)
+		sizeEntries := ((len(c.entries)) * cacheEntryLen)
 		buf := make([]byte, sizeEntries)
 		counter := 1
 		for cache_reqID, cache_tag := range c.entries {
-			offset := (counter * CACHE_ENTRY_LEN) - CACHE_ENTRY_LEN
+			offset := (counter * cacheEntryLen) - cacheEntryLen
 			binary.BigEndian.PutUint32(
-				buf[offset:offset+CACHE_REQ_ID_LEN],
+				buf[offset:offset+cacheReqIDLen],
 				cache_reqID,
 			)
 			binary.BigEndian.PutUint16(
-				buf[offset+CACHE_REQ_ID_LEN:offset+CACHE_ENTRY_LEN],
+				buf[offset+cacheReqIDLen:offset+cacheEntryLen],
 				cache_tag,
 			)
 			counter += 1

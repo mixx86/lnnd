@@ -48,7 +48,10 @@ func New() (*Daemon, error) {
 			Session:  sessionMgr,
 			Sched:    schedService,
 			Writers: &store.Writers{
-				*store.NewRequestsWriter(dataDir, sessionMgr),
+				RequestsWriter: *store.NewRequestsWriter(
+					dataDir,
+					sessionMgr,
+				),
 			},
 		},
 	}, nil

@@ -17,50 +17,50 @@ const (
 	checkpointAfter = 512
 )
 
-type OP_KIND uint8
+type opKind uint8
 
 const (
-	OP_REQUEST OP_KIND = iota
-	OP_ACCEPTED
-	OP_REJECTED
-	OP_CHECKPOINT
+	opRequest opKind = iota
+	opAccepted
+	opRejected
+	opCheckpoint
 )
 
 const (
-	F_HEADER_MAGIC      uint32 = 0x4C4E4E52 // lnnr
-	F_HEADER_MAGIC_LEN         = 4
-	F_HEADER_LCO_LEN           = 8
-	F_HEADER_REQ_ID_LEN        = 4
+	fileHeaderMagic    uint32 = 0x4C4E4E52 // lnnr
+	fileHeaderMagicLen        = 4
+	fileHeaderLCOLen          = 8
+	fileHeaderReqIDLen        = 4
 
-	F_HEADER_TOTAL_LEN = F_HEADER_MAGIC_LEN + F_HEADER_LCO_LEN + F_HEADER_REQ_ID_LEN
+	fileHeaderLen = fileHeaderMagicLen + fileHeaderLCOLen + fileHeaderReqIDLen
 )
 
 const (
-	OP_KIND_LEN      = 1
-	ENTRY_LENGTH_LEN = 4
-	ENTRY_HEADER_LEN = ENTRY_LENGTH_LEN + OP_KIND_LEN
+	opKindLen      = 1
+	entryLengthLen = 4
+	entryHeaderLen = entryLengthLen + opKindLen
 )
 
 const (
-	CHECKPOINT_CSUM_LEN = 4
-	CHECKPOINT_LEN      = ENTRY_HEADER_LEN + CHECKPOINT_CSUM_LEN
+	checkpointChecksumLen = 4
+	checkpointLen         = entryHeaderLen + checkpointChecksumLen
 )
 
 const (
-	REQUEST_REQ_TYPE_LEN  = 2
-	REQUEST_PEER_UUID_LEN = 16
-	REQUEST_REQ_ID_LEN    = 4
-	REQUEST_UNIX_TS_LEN   = 8
+	requestTypeLen     = 2
+	requestPeerUUIDLen = 16
+	requestIDLen       = 4
+	requestUnixTSLen   = 8
 
-	REQUEST_STATIC_FIELDS_LEN = REQUEST_REQ_TYPE_LEN + REQUEST_PEER_UUID_LEN + REQUEST_REQ_ID_LEN + REQUEST_UNIX_TS_LEN
+	requestStaticFieldsLen = requestTypeLen + requestPeerUUIDLen + requestIDLen + requestUnixTSLen
 
-	REQUEST_PEER_UUID_OFFSET = ENTRY_HEADER_LEN + REQUEST_REQ_TYPE_LEN
-	REQUEST_REQ_ID_OFFSET    = REQUEST_PEER_UUID_OFFSET + REQUEST_PEER_UUID_LEN
+	requestPeerUUIDOffset = entryHeaderLen + requestTypeLen
+	requestIDOffset       = requestPeerUUIDOffset + requestPeerUUIDLen
 
-	REQUEST_RECOVERY_MIN_LEN = ENTRY_HEADER_LEN +
-		REQUEST_REQ_TYPE_LEN +
-		REQUEST_PEER_UUID_LEN +
-		REQUEST_REQ_ID_LEN
+	requestRecoveryMinLen = entryHeaderLen +
+		requestTypeLen +
+		requestPeerUUIDLen +
+		requestIDLen
 )
 
 func NewRequestsWriter(dir string, sm *peer.SessionManager) *RequestsWriter {
@@ -128,9 +128,9 @@ func (w *RequestsWriter) Run(s *sched.Service) {
 }
 
 func (r *RequestsFile) getReqID() (uint32, error) {
-	var buf [F_HEADER_REQ_ID_LEN]byte
+	var buf [fileHeaderReqIDLen]byte
 
-	if _, err := r.file.ReadAt(buf[:], F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN); err != nil {
+	if _, err := r.file.ReadAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen); err != nil {
 		logger.Daemon.Printf("error: reading current_req_id: %v", err)
 		return 0, err
 	}
@@ -141,10 +141,10 @@ func (r *RequestsFile) getReqID() (uint32, error) {
 func (r *RequestsFile) nextReqID() uint32 {
 	id := reqID.Add(1)
 
-	var buf [F_HEADER_REQ_ID_LEN]byte
+	var buf [fileHeaderReqIDLen]byte
 	binary.BigEndian.PutUint32(buf[:], id)
 
-	if _, err := r.file.WriteAt(buf[:], F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN); err != nil {
+	if _, err := r.file.WriteAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen); err != nil {
 		logger.Daemon.Printf("error: writing current_req_id: %v", err)
 	}
 

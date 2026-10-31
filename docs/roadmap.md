@@ -23,7 +23,7 @@ Make the codebase consistent before it grows further.
       unset.
 - [x] Load the configuration from `~/.lnn/lnnd.conf`, independently of the
       working directory.
-- [ ] Rename the `SCREAMING_CASE` constants in `internal/store` to Go style
+- [x] Rename the `SCREAMING_CASE` constants in `internal/store` to Go style
       (`F_HEADER_MAGIC_LEN` → `fileHeaderMagicLen`, `OP_KIND` → `opKind`).
 - [ ] Test coverage for `protocol` (encode/parse round trips), `network`
       (handshake) and `sched` (turns and backpressure).

@@ -27,6 +27,8 @@ func (s *Service) SubmitRequest(
 		return ErrRequestsQueueFull
 	}
 
+	s.UpdateQueuePressure(queues.RequestsQueueID, int64(pr.Req.Size()))
+
 	select {
 	case err := <-pr.Written:
 		if err != nil {
@@ -44,7 +46,9 @@ func (s *Service) NextRequest() (queues.PendingRequest, error) {
 	if !ok {
 		return queues.PendingRequest{}, errors.New("error asserting the queue")
 	}
-	return q.Dequeue(), nil
+	pr := q.Dequeue()
+	s.UpdateQueuePressure(queues.RequestsQueueID, -int64(pr.Req.Size()))
+	return pr, nil
 }
 
 func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
@@ -56,5 +60,11 @@ func (s *Service) TryNextRequest() (queues.PendingRequest, bool, error) {
 	}
 
 	req, ok := q.TryDequeue()
+	if ok {
+		s.UpdateQueuePressure(
+			queues.RequestsQueueID,
+			-int64(req.Req.Size()),
+		)
+	}
 	return req, ok, nil
 }

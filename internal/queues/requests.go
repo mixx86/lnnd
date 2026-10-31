@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"lnn/internal/config"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
 )
@@ -23,9 +24,17 @@ func requestsQueueSize() uint16 {
 }
 
 func NewRequestsQueue() *RequestsQueue {
-	return &RequestsQueue{
+	q := &RequestsQueue{
 		queue: make(chan PendingRequest, requestsQueueSize()),
 	}
+	q.config.MaxQueuedBytes = config.RequestsQueueMaxBytes()
+	return q
+}
+
+// Config returns a pointer because QueueConfig holds atomics: a copy would
+// silently stop tracking the queue.
+func (q *RequestsQueue) Config() *QueueConfig {
+	return &q.config
 }
 
 func (q *RequestsQueue) makePending(

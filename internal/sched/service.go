@@ -7,9 +7,10 @@ import (
 )
 
 func NewService(diskDevice string) *Service {
+	requestsQueue := queues.NewRequestsQueue()
 	s := &Service{
 		queues: map[queues.QueueID]any{
-			queues.RequestsQueueID: queues.NewRequestsQueue(),
+			queues.RequestsQueueID: requestsQueue,
 			queues.FilesQueueID:    queues.NewFilesQueue(),
 		},
 		pressure: map[SourceID]*atomic.Uint32{
@@ -42,12 +43,8 @@ func NewService(diskDevice string) *Service {
 		RequestsID: queues.RequestsQueueID,
 		FilesID:    queues.FilesQueueID,
 	}
-	QueuePressureTemplate := QueuePressure{
-		MaxQueuedBytes: 0,
-	}
-	s.queuePressure = map[queues.QueueID]QueuePressure{
-		queues.RequestsQueueID: QueuePressureTemplate,
-		queues.FilesQueueID:    QueuePressureTemplate,
+	s.queuePressure = map[queues.QueueID]*QueuePressure{
+		queues.RequestsQueueID: {Queue: requestsQueue.Config()},
 	}
 
 	s.maxWriters = 8

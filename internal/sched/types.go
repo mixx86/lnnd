@@ -51,9 +51,8 @@ type WriterConfig struct {
 }
 
 type QueuePressure struct {
-	Pressured      atomic.Bool
-	QueuedBytes    atomic.Int64
-	MaxQueuedBytes int64
+	Pressured atomic.Bool
+	Queue     *queues.QueueConfig
 }
 
 type Service struct {
@@ -63,7 +62,7 @@ type Service struct {
 	queues map[queues.QueueID]any
 
 	sourceQueues  map[SourceID]queues.QueueID
-	queuePressure map[queues.QueueID]QueuePressure
+	queuePressure map[queues.QueueID]*QueuePressure
 
 	pressure            map[SourceID]*atomic.Uint32
 	pressureChangeCond  *sync.Cond

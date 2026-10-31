@@ -9,18 +9,18 @@ import (
 )
 
 func (r *RequestsFile) checkFileHeader() error {
-	header := make([]byte, F_HEADER_TOTAL_LEN)
+	header := make([]byte, fileHeaderLen)
 	if _, err := r.file.ReadAt(header, 0); err != nil {
 		return err
 	}
 
-	magic := binary.BigEndian.Uint32(header[:F_HEADER_MAGIC_LEN])
-	if magic != F_HEADER_MAGIC {
+	magic := binary.BigEndian.Uint32(header[:fileHeaderMagicLen])
+	if magic != fileHeaderMagic {
 		return ErrInvalidMagic
 	}
 
 	lco := binary.BigEndian.Uint64(
-		header[F_HEADER_MAGIC_LEN : F_HEADER_MAGIC_LEN+F_HEADER_LCO_LEN],
+		header[fileHeaderMagicLen : fileHeaderMagicLen+fileHeaderLCOLen],
 	)
 
 	info, err := r.file.Stat()
@@ -32,7 +32,7 @@ func (r *RequestsFile) checkFileHeader() error {
 		)
 	}
 
-	if lco < F_HEADER_TOTAL_LEN || lco >= uint64(info.Size()) {
+	if lco < fileHeaderLen || lco >= uint64(info.Size()) {
 		return ErrInvalidLCO
 	}
 
@@ -50,9 +50,9 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 	}
 
 	fileSize := info.Size()
-	checkpointEnd := int64(lco) + int64(CHECKPOINT_LEN)
+	checkpointEnd := int64(lco) + int64(checkpointLen)
 
-	if int64(lco) < int64(F_HEADER_TOTAL_LEN) || checkpointEnd > fileSize {
+	if int64(lco) < int64(fileHeaderLen) || checkpointEnd > fileSize {
 		return fmt.Errorf("invalid last checkpoint offset: %d", lco), false
 	}
 
@@ -61,7 +61,7 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 		return err, false
 	}
 
-	if op != OP_CHECKPOINT || entryLength != uint32(CHECKPOINT_LEN) {
+	if op != opCheckpoint || entryLength != uint32(checkpointLen) {
 		return fmt.Errorf("invalid checkpoint at lco %d", lco), false
 	}
 
@@ -78,7 +78,7 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 		return err, false
 	}
 
-	offset := previousCheckpoint + int64(CHECKPOINT_LEN)
+	offset := previousCheckpoint + int64(checkpointLen)
 	var checksum uint32
 	var recoverable bool
 
@@ -88,15 +88,15 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 			return err, recoverable
 		}
 
-		if op == OP_REQUEST &&
-			entryLength >= uint32(REQUEST_RECOVERY_MIN_LEN) {
+		if op == opRequest &&
+			entryLength >= uint32(requestRecoveryMinLen) {
 			r.recovery = append(r.recovery, RecoveryEntry{
 				Offset: offset,
 				PeerUUID: uuid.UUID(
-					entry[REQUEST_PEER_UUID_OFFSET : REQUEST_PEER_UUID_OFFSET+REQUEST_PEER_UUID_LEN],
+					entry[requestPeerUUIDOffset : requestPeerUUIDOffset+requestPeerUUIDLen],
 				),
 				ReqID: binary.BigEndian.Uint32(
-					entry[REQUEST_REQ_ID_OFFSET : REQUEST_REQ_ID_OFFSET+REQUEST_REQ_ID_LEN],
+					entry[requestIDOffset : requestIDOffset+requestIDLen],
 				),
 			})
 			recoverable = true
@@ -113,11 +113,11 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 		), recoverable
 	}
 
-	var checksumBuf [CHECKPOINT_CSUM_LEN]byte
+	var checksumBuf [checkpointChecksumLen]byte
 
 	if _, err := r.file.ReadAt(
 		checksumBuf[:],
-		int64(lco)+int64(ENTRY_HEADER_LEN),
+		int64(lco)+int64(entryHeaderLen),
 	); err != nil {
 		return err, recoverable
 	}
@@ -148,19 +148,19 @@ func (r *RequestsFile) checkTailEntries(
 			// The entry is truncated/corrupt. Check whether enough of the
 			// request survived to recover peer_uuid + req_id.
 			remaining := fileSize - offset
-			minRequestLen := int64(REQUEST_RECOVERY_MIN_LEN)
+			minRequestLen := int64(requestRecoveryMinLen)
 
 			if remaining >= minRequestLen {
-				var opBuf [OP_KIND_LEN]byte
+				var opBuf [opKindLen]byte
 
 				if _, readErr := r.file.ReadAt(
 					opBuf[:],
-					offset+int64(ENTRY_LENGTH_LEN),
+					offset+int64(entryLengthLen),
 				); readErr != nil {
 					return err, false
 				}
 
-				if OP_KIND(opBuf[0]) == OP_REQUEST {
+				if opKind(opBuf[0]) == opRequest {
 					return err, true
 				}
 			}
@@ -170,7 +170,7 @@ func (r *RequestsFile) checkTailEntries(
 
 		// A checkpoint after lco would mean the file header's lco is stale.
 		// It should not happen if lco is maintained correctly.
-		if op == OP_CHECKPOINT {
+		if op == opCheckpoint {
 			return fmt.Errorf(
 				"unexpected checkpoint at offset %d after last checkpoint",
 				offset,
@@ -198,7 +198,7 @@ func (r *RequestsFile) findLCO() (uint64, error) {
 	}
 
 	lastCheckpoint := int64(-1)
-	offset := int64(F_HEADER_TOTAL_LEN)
+	offset := int64(fileHeaderLen)
 
 	for offset < info.Size() {
 		_, entryLength, op, err := r.readEntry(offset, info.Size())
@@ -206,8 +206,8 @@ func (r *RequestsFile) findLCO() (uint64, error) {
 			break
 		}
 
-		if op == OP_CHECKPOINT {
-			if entryLength != uint32(CHECKPOINT_LEN) {
+		if op == opCheckpoint {
+			if entryLength != uint32(checkpointLen) {
 				break
 			}
 			lastCheckpoint = offset
@@ -226,7 +226,7 @@ func (r *RequestsFile) findLCO() (uint64, error) {
 func (r *RequestsFile) findPreviousCheckpoint(
 	lco int64,
 ) (int64, error) {
-	offset := int64(F_HEADER_TOTAL_LEN)
+	offset := int64(fileHeaderLen)
 	previousCheckpoint := int64(-1)
 
 	for offset < lco {
@@ -245,8 +245,8 @@ func (r *RequestsFile) findPreviousCheckpoint(
 			)
 		}
 
-		if op == OP_CHECKPOINT {
-			if entryLength != uint32(CHECKPOINT_LEN) {
+		if op == opCheckpoint {
+			if entryLength != uint32(checkpointLen) {
 				return 0, fmt.Errorf(
 					"invalid checkpoint length %d at offset %d",
 					entryLength,
@@ -281,7 +281,7 @@ func (r *RequestsFile) findPreviousCheckpoint(
 func (r *RequestsFile) readEntry(
 	offset int64,
 	limit int64,
-) ([]byte, uint32, OP_KIND, error) {
+) ([]byte, uint32, opKind, error) {
 	if offset < 0 || offset >= limit {
 		return nil, 0, 0, fmt.Errorf(
 			"invalid entry offset %d",
@@ -289,7 +289,7 @@ func (r *RequestsFile) readEntry(
 		)
 	}
 
-	if limit-offset < int64(ENTRY_LENGTH_LEN) {
+	if limit-offset < int64(entryLengthLen) {
 		return nil, 0, 0, fmt.Errorf(
 			"%w at offset %d",
 			ErrTruncatedEntry,
@@ -297,7 +297,7 @@ func (r *RequestsFile) readEntry(
 		)
 	}
 
-	var lengthBuf [ENTRY_LENGTH_LEN]byte
+	var lengthBuf [entryLengthLen]byte
 	if _, err := r.file.ReadAt(lengthBuf[:], offset); err != nil {
 		return nil, 0, 0, fmt.Errorf(
 			"reading entry length at offset %d: %w",
@@ -308,7 +308,7 @@ func (r *RequestsFile) readEntry(
 
 	entryLength := binary.BigEndian.Uint32(lengthBuf[:])
 
-	if entryLength < uint32(ENTRY_HEADER_LEN) {
+	if entryLength < uint32(entryHeaderLen) {
 		return nil, 0, 0, fmt.Errorf(
 			"%w at offset %d: invalid length %d",
 			ErrCorruptEntry,
@@ -337,10 +337,10 @@ func (r *RequestsFile) readEntry(
 		)
 	}
 
-	op := OP_KIND(entry[ENTRY_LENGTH_LEN])
+	op := opKind(entry[entryLengthLen])
 
 	switch op {
-	case OP_REQUEST, OP_ACCEPTED, OP_REJECTED, OP_CHECKPOINT:
+	case opRequest, opAccepted, opRejected, opCheckpoint:
 	default:
 		return nil, entryLength, op, fmt.Errorf(
 			"%w at offset %d: operation %d",

@@ -14,10 +14,10 @@ import (
 
 func (r *RequestsFile) writeEntry(
 	bw *bufio.Writer,
-	op OP_KIND,
+	op opKind,
 	fields []byte,
 ) error {
-	entryLength := uint32(ENTRY_HEADER_LEN + len(fields))
+	entryLength := uint32(entryHeaderLen + len(fields))
 	header := encodeEntryHeader(op, entryLength)
 
 	if _, err := bw.Write(header[:]); err != nil {
@@ -57,7 +57,7 @@ func (w *RequestsWriter) persistRequests(
 	}
 	bw := bufio.NewWriter(w.reqFile.file)
 
-	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, OP_REQUEST); err != nil {
+	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, opRequest); err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
@@ -109,47 +109,47 @@ func (r *RequestsFile) writeBatch(
 	bw *bufio.Writer,
 	batch []queues.PendingRequest,
 	reqIDs []uint32,
-	op OP_KIND,
+	op opKind,
 ) error {
 	for idx, pr := range batch {
 		var fields []byte
 
 		switch op {
-		case OP_REQUEST:
+		case opRequest:
 			reqPaths := pr.Req.Encode()
 
-			req := make([]byte, REQUEST_STATIC_FIELDS_LEN+len(reqPaths))
+			req := make([]byte, requestStaticFieldsLen+len(reqPaths))
 
 			offset := 0
 
 			binary.BigEndian.PutUint16(
-				req[offset:offset+REQUEST_REQ_TYPE_LEN],
+				req[offset:offset+requestTypeLen],
 				uint16(pr.Req.Type()),
 			)
-			offset += REQUEST_REQ_TYPE_LEN
+			offset += requestTypeLen
 
-			copy(req[offset:offset+REQUEST_PEER_UUID_LEN], pr.From.ID[:])
-			offset += REQUEST_PEER_UUID_LEN
+			copy(req[offset:offset+requestPeerUUIDLen], pr.From.ID[:])
+			offset += requestPeerUUIDLen
 
 			binary.BigEndian.PutUint32(
-				req[offset:offset+REQUEST_REQ_ID_LEN],
+				req[offset:offset+requestIDLen],
 				reqIDs[idx],
 			)
-			offset += REQUEST_REQ_ID_LEN
+			offset += requestIDLen
 
 			binary.BigEndian.PutUint64(
-				req[offset:offset+REQUEST_UNIX_TS_LEN],
+				req[offset:offset+requestUnixTSLen],
 				pr.EnqueuedAt,
 			)
-			offset += REQUEST_UNIX_TS_LEN
+			offset += requestUnixTSLen
 
 			copy(req[offset:], reqPaths)
 
 			fields = req
 
-		case OP_ACCEPTED, OP_REJECTED:
+		case opAccepted, opRejected:
 			if res, ok := pr.Req.(protocol.Resolution); ok {
-				fieldsBuf := make([]byte, REQUEST_REQ_ID_LEN)
+				fieldsBuf := make([]byte, requestIDLen)
 				binary.BigEndian.PutUint32(fieldsBuf, res.LCLReqID)
 				fields = fieldsBuf
 			} else {
@@ -160,7 +160,7 @@ func (r *RequestsFile) writeBatch(
 			return fmt.Errorf("unknown operation kind: %d", op)
 		}
 
-		entryLength := uint32(ENTRY_HEADER_LEN + len(fields))
+		entryLength := uint32(entryHeaderLen + len(fields))
 		header := encodeEntryHeader(op, entryLength)
 
 		req := make([]byte, 0, entryLength)
@@ -190,7 +190,7 @@ func (r *RequestsFile) checkpoint(
 		return 0, err
 	}
 
-	checkpointEnd := prevLco + CHECKPOINT_LEN
+	checkpointEnd := prevLco + checkpointLen
 
 	switch {
 	case checkpointEnd == info.Size():
@@ -202,11 +202,11 @@ func (r *RequestsFile) checkpoint(
 	sr := io.NewSectionReader(f, checkpointEnd, info.Size()-checkpointEnd)
 
 	var checksum uint32
-	var entryLengthBuf [ENTRY_LENGTH_LEN]byte
+	var entryLengthBuf [entryLengthLen]byte
 	var entryOffset int64
 
 	for entryOffset < sr.Size() {
-		if int64(ENTRY_LENGTH_LEN) > sr.Size()-entryOffset {
+		if int64(entryLengthLen) > sr.Size()-entryOffset {
 			return 0, fmt.Errorf(
 				"truncated entry length at offset %d",
 				checkpointEnd+entryOffset,
@@ -223,7 +223,7 @@ func (r *RequestsFile) checkpoint(
 
 		entryLength := binary.BigEndian.Uint32(entryLengthBuf[:])
 
-		if entryLength < uint32(ENTRY_HEADER_LEN) {
+		if entryLength < uint32(entryHeaderLen) {
 			return 0, fmt.Errorf(
 				"invalid entry length %d at offset %d",
 				entryLength,
@@ -241,9 +241,9 @@ func (r *RequestsFile) checkpoint(
 		}
 
 		entry := make([]byte, entryLength)
-		copy(entry[:ENTRY_LENGTH_LEN], entryLengthBuf[:])
+		copy(entry[:entryLengthLen], entryLengthBuf[:])
 
-		if _, err := io.ReadFull(sr, entry[ENTRY_LENGTH_LEN:]); err != nil {
+		if _, err := io.ReadFull(sr, entry[entryLengthLen:]); err != nil {
 			return 0, fmt.Errorf(
 				"reading entry at offset %d: %w",
 				checkpointEnd+entryOffset,
@@ -255,10 +255,10 @@ func (r *RequestsFile) checkpoint(
 		entryOffset += int64(entryLength)
 	}
 
-	var fields [CHECKPOINT_CSUM_LEN]byte
+	var fields [checkpointChecksumLen]byte
 	binary.BigEndian.PutUint32(fields[:], checksum)
 
-	if err := r.writeEntry(bw, OP_CHECKPOINT, fields[:]); err != nil {
+	if err := r.writeEntry(bw, opCheckpoint, fields[:]); err != nil {
 		return 0, err
 	}
 
