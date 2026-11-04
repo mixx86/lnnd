@@ -99,7 +99,8 @@ func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 		// Base64 so the public key is easy to share and inspect.
 		pubBase64 := base64.StdEncoding.EncodeToString(pub)
 		// 0644: public key can be world-readable by design.
-		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0644); err != nil {
+		err = os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0644)
+		if err != nil {
 			return nil, nil, fmt.Errorf("failed to save public key: %w", err)
 		}
 		return priv, pub, nil

@@ -15,9 +15,10 @@ const (
 	FilesQueueID
 )
 
-// PendingRequest is transient: it exists only while the WAL writer is persisting
-// the request to disk. Once Written is closed, this struct must not be retained —
-// the on-disk file is the sole source of truth for pending requests.
+// PendingRequest is transient: it exists only while the WAL writer is
+// persisting the request to disk. Once Written is closed, this struct must
+// not be retained — the on-disk file is the sole source of truth for pending
+// requests.
 type PendingRequest struct {
 	From       *peer.RemoteNode
 	Req        protocol.InboundRequest

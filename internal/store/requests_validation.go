@@ -99,7 +99,8 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 			r.recovery = append(r.recovery, RecoveryEntry{
 				Offset: offset,
 				PeerUUID: uuid.UUID(
-					entry[requestPeerUUIDOffset : requestPeerUUIDOffset+requestPeerUUIDLen],
+					entry[requestPeerUUIDOffset : requestPeerUUIDOffset+
+						requestPeerUUIDLen],
 				),
 				ReqID: binary.BigEndian.Uint32(
 					entry[requestIDOffset : requestIDOffset+requestIDLen],
@@ -372,7 +373,8 @@ func (r *RequestsFile) addTailRecovery(offset int64) error {
 	r.recovery = append(r.recovery, RecoveryEntry{
 		Offset: offset,
 		PeerUUID: uuid.UUID(
-			buf[requestPeerUUIDOffset : requestPeerUUIDOffset+requestPeerUUIDLen],
+			buf[requestPeerUUIDOffset : requestPeerUUIDOffset+
+				requestPeerUUIDLen],
 		),
 		ReqID: binary.BigEndian.Uint32(
 			buf[requestIDOffset : requestIDOffset+requestIDLen],

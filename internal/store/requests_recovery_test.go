@@ -147,7 +147,8 @@ func TestRequestsFileRecoveryRepairsMisalignedLCO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := (&RequestsFile{file: f}).setLco(uint64(layout.cp1 + 1)); err != nil {
+	rf := &RequestsFile{file: f}
+	if err := rf.setLco(uint64(layout.cp1 + 1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {

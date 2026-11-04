@@ -52,7 +52,8 @@ const (
 	requestIDLen       = 4
 	requestUnixTSLen   = 8
 
-	requestStaticFieldsLen = requestTypeLen + requestPeerUUIDLen + requestIDLen + requestUnixTSLen
+	requestStaticFieldsLen = requestTypeLen + requestPeerUUIDLen +
+		requestIDLen + requestUnixTSLen
 
 	requestPeerUUIDOffset = entryHeaderLen + requestTypeLen
 	requestIDOffset       = requestPeerUUIDOffset + requestPeerUUIDLen
@@ -140,7 +141,8 @@ func (w *RequestsWriter) repairOnStartup() error {
 func (r *RequestsFile) getReqID() (uint32, error) {
 	var buf [fileHeaderReqIDLen]byte
 
-	if _, err := r.file.ReadAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen); err != nil {
+	_, err := r.file.ReadAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen)
+	if err != nil {
 		logger.Daemon.Printf("error: reading current_req_id: %v", err)
 		return 0, err
 	}
@@ -154,7 +156,8 @@ func (r *RequestsFile) nextReqID() uint32 {
 	var buf [fileHeaderReqIDLen]byte
 	binary.BigEndian.PutUint32(buf[:], id)
 
-	if _, err := r.file.WriteAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen); err != nil {
+	_, err := r.file.WriteAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen)
+	if err != nil {
 		logger.Daemon.Printf("error: writing current_req_id: %v", err)
 	}
 

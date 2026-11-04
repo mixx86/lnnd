@@ -6,7 +6,8 @@ import (
 
 func TestParseRequest_valid(t *testing.T) {
 	data := []byte(
-		`{"op":"link","type":"symreq","src":"192.168.1.34://path/to/file","dst":"./link"}`,
+		`{"op":"link","type":"symreq",` +
+			`"src":"192.168.1.34://path/to/file","dst":"./link"}`,
 	)
 	req, err := ParseRequest(data)
 	if err != nil {
@@ -33,7 +34,8 @@ func TestParseRequest_valid(t *testing.T) {
 func TestParseRequest_ignoresIPField(t *testing.T) {
 	// IP is derived by Validate; a client must not be able to set it directly.
 	data := []byte(
-		`{"op":"link","type":"symreq","src":"192.168.1.34://f","ip":"10.0.0.1"}`,
+		`{"op":"link","type":"symreq",` +
+			`"src":"192.168.1.34://f","ip":"10.0.0.1"}`,
 	)
 	req, err := ParseRequest(data)
 	if err != nil {

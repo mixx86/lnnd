@@ -57,7 +57,8 @@ func (w *RequestsWriter) persistRequests(
 	}
 	bw := bufio.NewWriter(w.reqFile.file)
 
-	if err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, opRequest); err != nil {
+	err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, opRequest)
+	if err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
@@ -102,8 +103,9 @@ func (w *RequestsWriter) persistRequests(
 	return nil
 }
 
-// WARNING: writeBatch does ONLY write in the buffer, make sure to call bw.Flush and f.Sync
-// once you're done writing unless you don't actually want to save the content.
+// WARNING: writeBatch does ONLY write in the buffer, make sure to call
+// bw.Flush and f.Sync once you're done writing unless you don't actually want
+// to save the content.
 func (r *RequestsFile) writeBatch(
 	f *os.File,
 	bw *bufio.Writer,
