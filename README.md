@@ -1,6 +1,6 @@
 # lnnd
 
-**lnnd** is the background daemon of [lnn](https://github.com/mixx86/lnn) (**LiNk + Networks**) — Unix `ln` extended with network capabilities. It manages peer connections, speaks **LNNP** (the *LiNk + Networks Protocol*), persists incoming link requests and schedules disk writes.
+**lnnd** is the background daemon of [lnn](https://github.com/mixx86/lnn) (**LiNk + Networks**): it links files across machines, peer to peer, over authenticated connections speaking **LNNP** (the *LiNk + Networks Protocol*).
 
 Users interact with lnn through the [`lnn`](https://github.com/mixx86/lnn) CLI; the CLI sends its requests to lnnd over a local Unix socket.
 

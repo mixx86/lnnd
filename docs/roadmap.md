@@ -14,10 +14,10 @@ Make the codebase consistent before it grows further.
 
 - [x] Naming consistency pass (`message.go`, `Credentials`, `OK`, `Symlink`,
       `Checksum`, `MsgType`, `ipc.HandleConn`).
-- [ ] Apply the rest of the coding style: 80-column limit (`make lll` still
+- [x] Apply the rest of the coding style: 80-column limit (`make lll` still
       reports long comment lines) and *why*-only comments.
 - [x] `fmt`, `golines` and `lll` Makefile targets.
-- [ ] Run `lll` in CI once the codebase passes it.
+- [x] Run `lll` in CI once the codebase passes it.
 - [x] Align the Go version: README and `go.mod` both require Go 1.26.
 - [x] Configurable monitored disk (`LNND_DISK_DEVICE`), auto-detected when
       unset.
