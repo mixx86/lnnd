@@ -86,4 +86,4 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 
 ## License
 
-[Apache 2.0](LICENSE)
+[AGPLv3](LICENSE)
