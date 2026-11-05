@@ -38,6 +38,12 @@ func (w *RequestsWriter) persistRequests(
 	for i := range batch {
 		reqIDs[i] = w.reqFile.nextReqID()
 	}
+
+	/* The cache does not take a write turn (for now?):
+	 * a few bytes per request are not worth scheduling. Still
+	 * being reconsidered, which is why RequestsCacheID keeps its
+	 * WriterConfig in sched.
+	 */
 	go func() {
 		lastIdx := len(batch) - 1
 		var flush bool
@@ -63,44 +69,45 @@ func (w *RequestsWriter) persistRequests(
 		return err
 	}
 
+	written := int64(bw.Buffered()) + checkpointLen + fileHeaderLCOLen
+
 	wturn := s.WaitWriteTurn(sched.RequestsID)
-	defer s.ReleaseWriteTurn(wturn)
+	if err := w.commitBatch(bw); err != nil {
+		s.ReleaseWriteTurn(wturn, 0)
+		notifyWriteResult(batch, err)
+		return err
+	}
+	s.ReleaseWriteTurn(wturn, written)
+
+	notifyWriteResult(batch, nil)
+	return nil
+}
+
+func (w *RequestsWriter) commitBatch(bw *bufio.Writer) error {
+	f := w.reqFile.file
+
 	if err := bw.Flush(); err != nil {
-		notifyWriteResult(batch, err)
+		return err
+	}
+	if err := f.Sync(); err != nil {
 		return err
 	}
 
-	if err := w.reqFile.file.Sync(); err != nil {
-		notifyWriteResult(batch, err)
-		return err
-	}
-
-	lco, err := w.reqFile.checkpoint(w.reqFile.file, bw)
+	lco, err := w.reqFile.checkpoint(f, bw)
 	if err != nil {
-		notifyWriteResult(batch, err)
 		return err
 	}
-
 	if err := bw.Flush(); err != nil {
-		notifyWriteResult(batch, err)
 		return err
 	}
-	if err := w.reqFile.file.Sync(); err != nil {
-		notifyWriteResult(batch, err)
+	if err := f.Sync(); err != nil {
 		return err
 	}
 
 	if err := w.reqFile.setLco(lco); err != nil {
-		notifyWriteResult(batch, err)
 		return err
 	}
-	if err := w.reqFile.file.Sync(); err != nil {
-		notifyWriteResult(batch, err)
-		return err
-	}
-
-	notifyWriteResult(batch, nil)
-	return nil
+	return f.Sync()
 }
 
 // WARNING: writeBatch does ONLY write in the buffer, make sure to call

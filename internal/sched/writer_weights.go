@@ -2,7 +2,8 @@ package sched
 
 import "time"
 
-func (s *Service) RecordWriteResult(
+// WARNING: recordWriteResultLocked must be called with writeTurnMu held.
+func (s *Service) recordWriteResultLocked(
 	source SourceID,
 	writtenBytes int64,
 	elapsed time.Duration,
@@ -10,9 +11,6 @@ func (s *Service) RecordWriteResult(
 	if writtenBytes <= 0 || elapsed <= 0 {
 		return
 	}
-
-	s.writeTurnMu.Lock()
-	defer s.writeTurnMu.Unlock()
 
 	cfg, ok := s.WCB[source]
 	if !ok || cfg.expectedBytes <= 0 {

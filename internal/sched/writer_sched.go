@@ -20,7 +20,7 @@ func (s *Service) WaitWriteTurn(source SourceID) *Writer {
 	return w
 }
 
-func (s *Service) ReleaseWriteTurn(w *Writer) {
+func (s *Service) ReleaseWriteTurn(w *Writer, writtenBytes int64) {
 	if w == nil {
 		return
 	}
@@ -31,6 +31,12 @@ func (s *Service) ReleaseWriteTurn(w *Writer) {
 	if _, ok := s.activeWriters[w]; !ok {
 		return
 	}
+
+	s.recordWriteResultLocked(
+		w.source,
+		writtenBytes,
+		time.Since(w.grantedAt),
+	)
 
 	delete(s.activeWriters, w)
 	w.granted = false
@@ -99,6 +105,7 @@ func (s *Service) dispatchWriters() {
 		)
 
 		s.activeWriters[w] = struct{}{}
+		w.grantedAt = time.Now()
 		w.granted = true
 		close(w.turn)
 	}

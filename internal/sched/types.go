@@ -36,6 +36,7 @@ type Writer struct {
 	turn           chan struct{}
 	requestedBytes int64
 	blockedSince   time.Time
+	grantedAt      time.Time
 	granted        bool
 	budget         time.Duration
 }
