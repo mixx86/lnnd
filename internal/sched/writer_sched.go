@@ -76,7 +76,7 @@ func (s *Service) dispatchWriters() {
 
 	limit := s.maxWriters
 
-	switch s.diskLoad.State {
+	switch s.diskLoad.GetState() {
 	case DiskLoadNormal:
 		limit = s.maxWriters
 
@@ -92,8 +92,8 @@ func (s *Service) dispatchWriters() {
 
 		selected := 0
 
-		if s.diskLoad.State == DiskLoadSaturated ||
-			s.diskLoad.State == DiskLoadElevated {
+		if s.diskLoad.GetState() == DiskLoadSaturated ||
+			s.diskLoad.GetState() == DiskLoadElevated {
 			selected = s.selectHighestPriorityWriter()
 		}
 

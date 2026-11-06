@@ -76,7 +76,7 @@ func (s *Service) UpdateDiskUtilization(util float64) {
 			(1-alpha)*d.SmoothedUtil
 	}
 
-	previousState := d.State
+	previousState := d.GetState()
 
 	switch {
 	case d.SmoothedUtil > highLimit:
@@ -87,7 +87,7 @@ func (s *Service) UpdateDiskUtilization(util float64) {
 		}
 
 		if now.Sub(d.HighSince) >= holdTime {
-			d.State = DiskLoadSaturated
+			d.SetState(uint32(DiskLoadSaturated))
 		}
 
 	case d.SmoothedUtil < lowLimit:
@@ -98,21 +98,21 @@ func (s *Service) UpdateDiskUtilization(util float64) {
 		}
 
 		if now.Sub(d.LowSince) >= holdTime {
-			d.State = DiskLoadNormal
+			d.SetState(uint32(DiskLoadNormal))
 		}
 
 	default:
 		d.HighSince = time.Time{}
 		d.LowSince = time.Time{}
 
-		if d.State == DiskLoadNormal {
-			d.State = DiskLoadElevated
-		} else if d.State == DiskLoadSaturated {
-			d.State = DiskLoadElevated
+		if d.GetState() == DiskLoadNormal {
+			d.SetState(uint32(DiskLoadElevated))
+		} else if d.GetState() == DiskLoadSaturated {
+			d.SetState(uint32(DiskLoadElevated))
 		}
 	}
 
-	changed := previousState != d.State
+	changed := previousState != d.GetState()
 
 	s.diskTrackerMu.Unlock()
 

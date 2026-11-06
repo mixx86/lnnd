@@ -23,19 +23,22 @@ func NewService(diskDevice string) *Service {
 
 	s.WCB = map[SourceID]*WriterConfig{
 		RequestsCacheID: {
-			baseWeight:    RequestsCacheWeight,
-			weight:        RequestsCacheWeight,
-			expectedBytes: 4 << 10,
+			baseWeight:        RequestsCacheWeight,
+			weight:            RequestsCacheWeight,
+			baseExpectedBytes: 4 << 10,
+			expectedBytes:     4 << 10,
 		},
 		RequestsID: {
-			baseWeight:    RequestsWeight,
-			weight:        RequestsWeight,
-			expectedBytes: 16 << 10,
+			baseWeight:        RequestsWeight,
+			weight:            RequestsWeight,
+			baseExpectedBytes: 16 << 10,
+			expectedBytes:     16 << 10,
 		},
 		FilesID: {
-			baseWeight:    FilesWeight,
-			weight:        FilesWeight,
-			expectedBytes: 1 << 20,
+			baseWeight:        FilesWeight,
+			weight:            FilesWeight,
+			baseExpectedBytes: 1 << 20,
+			expectedBytes:     1 << 20,
 		},
 	}
 

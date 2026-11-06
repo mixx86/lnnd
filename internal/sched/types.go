@@ -24,11 +24,23 @@ const (
 )
 
 type DiskLoadTracker struct {
-	State        DiskLoadState
+	/* State is read by every writer, and pollDiskLoad holds diskTrackerMu
+		* periodically, so an atomic (instead of using diskTrackerMu) keeps
+	    * writers from waiting on it.
+	*/
+	State        atomic.Uint32
 	SmoothedUtil float64
 	Initialized  bool
 	HighSince    time.Time
 	LowSince     time.Time
+}
+
+func (d *DiskLoadTracker) GetState() DiskLoadState {
+	return DiskLoadState(d.State.Load())
+}
+
+func (d *DiskLoadTracker) SetState(state uint32) {
+	d.State.Store(state)
 }
 
 type Writer struct {
@@ -45,10 +57,12 @@ type WriterConfig struct {
 	baseWeight float64
 	weight     float64
 
-	expectedBytes int64
+	baseExpectedBytes int64
+	expectedBytes     int64
 
-	baseline time.Duration
-	samples  int
+	recentWriteTime  time.Duration
+	typicalWriteTime time.Duration
+	samples          int
 }
 
 type QueuePressure struct {

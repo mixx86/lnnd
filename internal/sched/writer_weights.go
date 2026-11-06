@@ -2,6 +2,13 @@ package sched
 
 import "time"
 
+const (
+	recentWriteTimeAlpha  = 0.1
+	typicalWriteTimeAlpha = 0.01
+
+	expectedBytesAlpha = 0.0025
+)
+
 // WARNING: recordWriteResultLocked must be called with writeTurnMu held.
 func (s *Service) recordWriteResultLocked(
 	source SourceID,
@@ -23,16 +30,43 @@ func (s *Service) recordWriteResultLocked(
 			float64(writtenBytes),
 	)
 
-	const alpha = 0.1
+	cfg.expectedBytes = ema(
+		cfg.expectedBytes,
+		writtenBytes,
+		expectedBytesAlpha,
+	)
 
 	if cfg.samples == 0 {
-		cfg.baseline = normalized
+		cfg.recentWriteTime = normalized
 	} else {
-		cfg.baseline = time.Duration(
-			(1-alpha)*float64(cfg.baseline) +
-				alpha*float64(normalized),
+		cfg.recentWriteTime = ema(
+			cfg.recentWriteTime,
+			normalized,
+			recentWriteTimeAlpha,
 		)
 	}
-
 	cfg.samples++
+
+	diskNormal := s.diskLoad.GetState() == DiskLoadNormal
+
+	if !diskNormal {
+		return
+	}
+	if cfg.typicalWriteTime == 0 {
+		cfg.typicalWriteTime = normalized
+	} else {
+		cfg.typicalWriteTime = ema(
+			cfg.typicalWriteTime,
+			normalized,
+			typicalWriteTimeAlpha,
+		)
+	}
+}
+
+type emaValue interface {
+	~int64 | ~float64
+}
+
+func ema[T emaValue](prev T, sample T, alpha float64) T {
+	return T((1-alpha)*float64(prev) + alpha*float64(sample))
 }
