@@ -85,7 +85,7 @@ Mutual authentication via Ed25519 challenge-response. Both sides send their cred
 
 ## Message dispatch
 
-After the handshake each connection runs a read loop (`ReadFrame` → `HandleTCPMessage`). The loop belongs to the shared network layer; it hands each message to the subsystem that owns it (see [architecture.md](architecture.md#functional-subsystems)):
+After the handshake each connection runs a read loop (`ReadFrame` → `HandleTCPMessage`). The loop is part of the core; it hands each message to the subsystem that owns it (see [architecture.md](architecture.md#functional-subsystems)):
 
 | Message received                          | Handled by | Action |
 |-------------------------------------------|------------|--------|

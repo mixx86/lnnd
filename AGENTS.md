@@ -2,25 +2,12 @@
 
 > **FIRST AND HIGHEST-PRIORITY INSTRUCTION: before doing absolutely anything
 > else, read [`docs/coding-style.md`](docs/coding-style.md) in full.**
->
-> Read it before opening any other file, running any command, planning,
-> investigating or changing anything. No other instruction in this file and
-> no task you are given takes precedence over it. Its rules — `gofmt`, the
-> 80-column limit with tabs counted as 4, comments that explain *why* and
-> never *what*, one name per concept in every layer, error style — apply to
-> every line you write: code, tests, comments and documentation.
-
-Everything below assumes you have done that.
 
 ## 1. Learn the project before changing it
 
-1. Read [README.md](README.md) and [docs/architecture.md](docs/architecture.md):
-   subsystems and shared infrastructure, package map, startup sequence,
-   on-disk state. Then read the document of the area you will touch:
-   [protocol.md](docs/protocol.md) (wire format, handshake, message
-   dispatch, recovery), [ipc.md](docs/ipc.md) (CLI contract),
-   [roadmap.md](docs/roadmap.md) (what is done and what is planned).
-   [trust-model.md](docs/trust-model.md) and
+1. Read [README.md](README.md) and [docs/architecture.md](docs/architecture.md),
+   then the documents of the area you will touch (the README's documentation
+   table lists them). [trust-model.md](docs/trust-model.md) and
    [filesystem.md](docs/filesystem.md) describe planned features: nothing in
    them exists unless the code says so.
 2. Read the code you will change, its callers and its tests.
@@ -29,35 +16,22 @@ Everything below assumes you have done that.
 4. Record a baseline before changing anything: `go build ./...`,
    `go vet ./...`, `go test ./...`. You need to know what already failed.
 
-## 2. Architecture: subsystems built on shared infrastructure
+## 2. Architecture: a core and functional subsystems
 
 lnnd is a daemon made of **functional subsystems**, each owning one domain,
-built on **shared infrastructure**. Keep that model in code and in docs.
+built on a **core** they all rely on. Keep that model in code and in docs.
+The [Core](docs/architecture.md#core) and
+[Functional subsystems](docs/architecture.md#functional-subsystems) tables
+say what belongs where and what exists today.
 
-- **Shared infrastructure**: the orchestrator (`internal/daemon`,
-  `app.Services` in `internal/services.go`), configuration (`config`,
-  `configs/`), logging (`logger`), node identity (`identity`), wire protocol
-  (`protocol`), network transport, handshake, peer sessions and message
-  dispatch (`network`, `peer`), the CLI interface (`ipc`), the write
-  scheduler with its disk-load monitor, backpressure and queues (`sched`,
-  `queues`), filesystem utilities (`fsutil`).
-- **Functional subsystems**: **requests** (the first and most developed),
-  **outbox**, **recovery**; file transfers exist only as placeholders
-  (`FilesID`, `FilesQueue`); link management, peer trust and filesystem
-  presentation are planned. The subsystem table in
-  [docs/architecture.md](docs/architecture.md#functional-subsystems) is the
-  reference for what exists.
 - **Requests are one domain, not the architecture.** Do not describe the
   scheduler, the queues, network dispatch or persistence as request
-  machinery, and do not present request-specific pieces as universal ones.
-  Request-specific today: `RequestsQueue`, `PendingRequest`, the request
-  operations `SubmitRequest` / `NextRequest` / `TryNextRequest`, write source
-  `RequestsID`, the requests WAL (`requests`), the requests cache, startup
-  repair and the `LNND_REQ_*` settings. Recovery currently serves requests
-  only.
-- **Do not classify by package alone.** `sched`, `queues`, `network` and
-  `ipc` are shared but hold the parts of a subsystem that plug into them;
-  `store` hosts persistence domains and has only one today (requests).
+  machinery, and do not present request-specific pieces as universal; the
+  [requests section](docs/architecture.md#requests-subsystem) says which
+  pieces are request-specific.
+- **Do not classify by package alone.** Core packages such as `sched`,
+  `queues`, `network` and `ipc` also hold the parts of subsystems that plug
+  into them, and `store` hosts persistence domains.
 - **There is no subsystem interface, registry or plugin mechanism.**
   `daemon.New` wires every component explicitly and
   `network.HandleTCPMessage` dispatches every message explicitly. Do not
@@ -65,7 +39,7 @@ built on **shared infrastructure**. Keep that model in code and in docs.
 - **Subsystems differ.** Not every subsystem has a queue, takes write turns
   or follows the request lifecycle. `outbox` and `recovery` show the
   existing pattern: their own package, their own file under `~/.lnn/`,
-  explicit wiring in `daemon.New`, and only the shared services they need.
+  explicit wiring in `daemon.New`, and only the core services they need.
 - **Import cycles shape the packages**: `recovery` is separate so `network`
   and `store` do not import each other; `ipc` takes `app.Services` because
   `daemon` imports `ipc`.
@@ -83,10 +57,10 @@ include:
 - Crash recovery identifies requests by per-peer tag through the requests
   cache, never by `rmt_req_id` (rationale in
   `internal/store/requests_file.go`).
-- Tags are allocated per peer, not per connection, skip 0, and jump ahead
-  1024 on every start.
-- The outbox keeps 256 frames per peer and drops the oldest when full; a
-  dropped tag answers `ErrUnknownTag`.
+- Tags are allocated per peer, not per connection, skip 0, and jump ahead on
+  every start.
+- The outbox drops a peer's oldest frame when its window is full; a dropped
+  tag answers `ErrUnknownTag`.
 - The requests cache is written in the background without a write turn.
 - Without a detectable disk device the daemon runs without disk monitoring
   instead of refusing to start.
@@ -94,7 +68,6 @@ include:
   overwritten.
 - The handshake proves possession of the advertised key; pinning keys to
   known peers is not implemented yet.
-- `revive`'s `exported` rule is disabled on purpose (see the coding style).
 
 Change intentional behaviour only when you can show that it violates a
 documented requirement or causes a concrete defect. When you cannot tell
@@ -112,7 +85,7 @@ or style.
   documented behaviour. Reach into internals only to isolate a real failure
   that is otherwise impractical to reach (for example, calling
   `persistRequests` with an abandoned `PendingRequest` instead of waiting
-  out the 10 s write confirmation), or to synchronize.
+  out the write confirmation timeout), or to synchronize.
 - **Follow the existing conventions**: standard `testing` only (do not add
   test frameworks or dependencies), tests in the package they test,
   table-driven tests when cases share a shape, `t.Helper()` in helpers,
@@ -127,9 +100,8 @@ or style.
   happen, use a short window that can only cause false passes, never false
   failures. Make a broken implementation fail fast instead of hanging, for
   example by draining the peer side of a `net.Pipe`.
-- **Mind the hard-coded timeouts** in `internal/sched/config.go` (100 ms
-  enqueue, 2 s pressure wait, 10 s write confirmation): tests that wait for
-  them cost real time, so keep them few.
+- **Mind the hard-coded timeouts** in `internal/sched/config.go`: tests that
+  wait for them cost real time, so keep them few.
 - **Treat peer input as hostile.** `ReadFrame` parses every frame before the
   handshake checks its type. When you add or change a message type, extend
   `FuzzReadFrame` (`internal/network/framing_test.go`) and run it:
@@ -168,10 +140,9 @@ findings.
 
 Before calling work done:
 
-- `gofmt -l ./cmd ./internal` prints nothing (`make fmt` rewrites).
-- No line exceeds 80 columns, tabs counted as 4: `make lll` (needs
-  `golangci-lint`; CI runs it with the build and tests on pushes and pull
-  requests to `main` and `dev`).
+- `gofmt -l ./cmd ./internal` prints nothing and `make lll` is clean; CI
+  runs `lll` with the build and tests on pushes and pull requests to `main`
+  and `dev`.
 - `go build ./...`, `go vet ./...` and `go test ./...` pass; use
   `go test -race ./...` for concurrent code and repeat timing-sensitive
   tests (`-count=20`) to catch flakiness.
@@ -183,21 +154,23 @@ actually was, and keep verified facts apart from assumptions.
 
 ## 7. Keep the documentation accurate
 
-- Docs follow the code: update `docs/` in the same commit as the change it
-  describes (the coding style requires it for renames).
+- Update `docs/` in the same commit as the change it describes.
 - Document what the code does today. When docs and code disagree, read the
   code and document the verified behaviour.
 - Mark status honestly: implemented, in progress, planned. Never present
-  planned work (trust model, filesystem presentation, file transfers,
-  request resolution, QUIC, TLS) as existing.
+  planned work as existing.
 - Generalize architectural concepts, not implementation details: the
   requests WAL stays the requests WAL and `SubmitRequest` stays a request
   operation. Never replace "request" with "subsystem" mechanically, and do
   not make subsystems sound identical when their lifecycles differ.
+- Link to the document that owns a fact instead of restating it, and keep
+  each catalog (subsystems, core components, files) in its table instead of
+  listing its members again in prose: copies and lists go stale as the
+  project grows.
 - A documentation change must not alter protocol semantics, wire formats or
   the IPC contract.
-- README, `roadmap.md`, `protocol.md` and `ipc.md` link to headings in
-  `architecture.md`; keep those anchors working when you rename a heading.
+- Other documents link to headings in `architecture.md`; keep those anchors
+  working when you rename a heading.
 
 ## 8. Commits and history
 
@@ -213,7 +186,8 @@ actually was, and keep verified facts apart from assumptions.
 - End every commit you author with a `Co-authored-by` trailer that
   identifies you. If the history already contains your identity, reproduce
   it exactly; never invent an identity or an email address, and never add
-  your trailer to commits you did not author.
+  your trailer to commits you did not author. Only the user knows who wrote
+  past commits: confirm with them before attributing any.
 
 ## 9. Never
 

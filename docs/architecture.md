@@ -1,11 +1,11 @@
 # lnnd architecture
 
-lnnd is the background daemon of lnn. It is made of **functional subsystems**, each responsible for one domain, built on **shared infrastructure** that provides the services they have in common. Users never talk to it directly: the [`lnn`](https://github.com/mixx86/lnn) CLI drives it over a local Unix socket.
+lnnd is the background daemon of lnn. It is made of **functional subsystems**, each responsible for one domain, built on a **core** that provides what they have in common. Users never talk to it directly: the [`lnn`](https://github.com/mixx86/lnn) CLI drives it over a local Unix socket.
 
-- **Shared infrastructure** — the orchestrator that wires everything together, configuration, logging, the node identity, the wire protocol, the network transport with authenticated peer sessions, the local IPC interface, and the write scheduler that arbitrates disk writes and applies backpressure.
-- **Functional subsystems** — each one owns its domain's messages, on-disk state, recovery rules and lifecycle, plus a queue and a write source if it needs them. **Requests** (link requests exchanged between peers) is the first and most developed subsystem; the **outbox** and **recovery** subsystems support it today; file transfers, link management and peer trust are planned.
+- **Core** — what every subsystem relies on, from configuration and the node identity to networking with authenticated peer sessions, IPC and the write scheduler. See [Core](#core).
+- **Functional subsystems** — each one owns its domain's messages, on-disk state, recovery rules and lifecycle, plus a queue and a write source if it needs them. **Requests** (link requests exchanged between peers) is the first and most developed one; [Functional subsystems](#functional-subsystems) lists them all.
 
-There is no generic subsystem interface, registry or plugin mechanism: `daemon.New` builds every component explicitly and hands each one the shared services it needs, and the network read loop calls the subsystem that owns each message directly. Subsystems are free to differ — not every one has a queue, takes write turns or follows the request lifecycle described below.
+There is no generic subsystem interface, registry or plugin mechanism: `daemon.New` builds every component explicitly and hands each one the core services it needs, and the network read loop calls the subsystem that owns each message directly. Subsystems are free to differ — not every one has a queue, takes write turns or follows the request lifecycle described below.
 
 Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc.md) (CLI ↔ daemon contract), [trust-model.md](trust-model.md) and [filesystem.md](filesystem.md) (planned features).
 
@@ -15,12 +15,12 @@ Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc
 ┌────┼───────────────────────────────────────────────────────┼─────┐
 │    ▼                         lnnd                          ▼     │
 │ ┌──────────────────────────────────────────────────────────────┐ │
-│ │ Shared infrastructure                                        │ │
+│ │ Core                                                         │ │
 │ │  IPC listener · network transport, handshake, peer sessions, │ │
 │ │  message dispatch · write scheduler (write turns, disk-load  │ │
 │ │  monitor, backpressure) · identity · configuration · logging │ │
 │ └──────────────────────────────┬───────────────────────────────┘ │
-│                                │ shared services; each peer      │
+│                                │ core services; each peer        │
 │                                │ message goes to its subsystem   │
 │ ┌──────────────────────────────┴───────────────────────────────┐ │
 │ │ Functional subsystems                                        │ │
@@ -36,11 +36,11 @@ Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc
 
 ---
 
-## Shared infrastructure
+## Core
 
 | Component                 | Packages                                  | Provides |
 |---------------------------|-------------------------------------------|----------|
-| Orchestrator              | `daemon`, `app` (`internal/services.go`)  | Builds the shared services and the subsystems and starts them; `app.Services` bundles what they share |
+| Orchestrator              | `daemon`, `app` (`internal/services.go`)  | Builds the core services and the subsystems and starts them; `app.Services` bundles what they share |
 | Configuration             | `config`, `configs/`                      | `~/.lnn/lnnd.conf`, network settings, data directory, memory limits, monitored disk ([Configuration](#configuration)) |
 | Logging                   | `logger`                                  | The `lnnd` and `lnnp` loggers |
 | Identity                  | `identity`                                | Node UUID and Ed25519 keypair, used to authenticate every connection ([Identity storage](#identity-storage)) |
@@ -59,7 +59,7 @@ Related documents: [protocol.md](protocol.md) (LNNP wire protocol), [ipc.md](ipc
 | [Recovery](#recovery-subsystem)       | Implemented, for requests only | Requests owed by peers after a crash damaged the requests WAL | `requests.recovery` |
 | File transfers                        | Planned: only a placeholder queue (`FilesQueue`) and write source (`FilesID`) exist | — | — |
 
-Further domains are planned but have no code yet: link creation and the persistent link database, peer management and trust, filesystem presentation. See [roadmap.md](roadmap.md).
+Further domains are planned; see [roadmap.md](roadmap.md).
 
 ---
 
@@ -73,8 +73,8 @@ configs/            Default lnnd.conf, embedded and written to ~/.lnn/ if missin
 internal/
   services.go       Services struct (package app): what the daemon shares between subsystems
 
-  Shared infrastructure
-  daemon/           Orchestrator: builds the shared services and the subsystems, starts them
+  Core
+  daemon/           Orchestrator: builds the core services and the subsystems, starts them
   config/           Env file loader, network config, data dir, memory limit parsing, disk device
   logger/           Colored loggers (lnnd / lnnp prefixes)
   identity/         Node identity: UUID + Ed25519 keypair (~/.lnn/)
@@ -92,11 +92,11 @@ internal/
   recovery/         Recovery: requests owed by peers after a crash
 ```
 
-`sched`, `queues`, `network` and `ipc` are shared, but each holds the parts of a subsystem that plug into it: the request operations in `sched`, `RequestsQueue` in `queues`, the per-message handlers in `network`, the `symreq` operation in `ipc`.
+`sched`, `queues`, `network` and `ipc` belong to the core but also hold the parts of subsystems that plug into them, such as the request operations in `sched` or `RequestsQueue` in `queues`.
 
 ### Services and import cycles
 
-`internal/services.go` (package `app`) defines the `Services` struct that bundles everything the daemon shares between subsystems: the shared services (`Identity`, `Session`, `Sched`) and the subsystems other components call into (`Writers` — the persistence writers, only the requests writer today — `Outbox` and `Recovery`):
+`internal/services.go` (package `app`) defines the `Services` struct that bundles everything the daemon shares between subsystems: core services (`Identity`, `Session`, `Sched`) and the subsystems other components call into (`Writers`, `Outbox`, `Recovery`):
 
 ```go
 type Services struct {
@@ -113,7 +113,7 @@ type Services struct {
 
 ### Startup sequence
 
-`daemon.New` builds the shared services first, then the subsystems that depend on them; `daemon.Start` launches the long-running loops.
+`daemon.New` builds the core first, then the subsystems that depend on it; `daemon.Start` launches the long-running loops.
 
 ```
 main()
@@ -153,7 +153,7 @@ Everything lnnd persists lives in `~/.lnn/` (directory mode `0700`, since it hol
 
 ## Write scheduler
 
-Shared infrastructure. `internal/sched` arbitrates the disk writes of the subsystems and protects the daemon under load. Each workload source has a `SourceID`, a weight and an expected write size, and may have an in-memory queue that the scheduler creates and holds. The operations that put work into a queue and take it out belong to the subsystem that owns the queue; for requests, see [Requests queue](#requests-queue).
+Part of the core. `internal/sched` arbitrates the disk writes of the subsystems and protects the daemon under load. Each workload source has a `SourceID`, a weight and an expected write size, and may have an in-memory queue that the scheduler creates and holds. The operations that put work into a queue and take it out belong to the subsystem that owns the queue; for requests, see [Requests queue](#requests-queue).
 
 **Write turns.** A writer calls `WaitWriteTurn(source)` before touching the disk and `ReleaseWriteTurn` afterwards. The scheduler grants turns up to a limit that depends on current disk load:
 
@@ -304,13 +304,13 @@ Not wired yet: outbound sessions (opened from IPC) do not send pending `RECOVER_
 
 ## Identity storage
 
-Shared infrastructure. The node identity — `uuid`, `id_ed25519` and `id_ed25519.pub`, listed under [On-disk state](#on-disk-state) — is generated automatically on first run if missing. `~/.lnn/` is created with mode `0700` because it holds the private key.
+Part of the core. The node identity — `uuid`, `id_ed25519` and `id_ed25519.pub`, listed under [On-disk state](#on-disk-state) — is generated automatically on first run if missing. `~/.lnn/` is created with mode `0700` because it holds the private key.
 
 ---
 
 ## Configuration
 
-Shared infrastructure. `~/.lnn/lnnd.conf` is loaded at startup. Each `KEY=VALUE` line is exported as an environment variable; lines without `=` are ignored. Some settings belong to a single subsystem:
+Part of the core. `~/.lnn/lnnd.conf` is loaded at startup. Each `KEY=VALUE` line is exported as an environment variable; lines without `=` are ignored. Some settings belong to a single subsystem:
 
 | Variable              | Purpose                                                              | Default | Used by |
 |-----------------------|----------------------------------------------------------------------|---------|---------|
