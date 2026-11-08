@@ -7,6 +7,8 @@ const (
 	typicalWriteTimeAlpha = 0.01
 
 	expectedBytesAlpha = 0.0025
+
+	maxOverrun = 2
 )
 
 // WARNING: recordWriteResultLocked must be called with writeTurnMu held.
@@ -23,6 +25,12 @@ func (s *Service) recordWriteResultLocked(
 	if !ok || cfg.expectedBytes <= 0 {
 		return
 	}
+
+    if cfg.typicalWriteTime > 0 {
+        overrun := float64(cfg.recentWriteTime) /
+                    float64(cfg.typicalWriteTime)
+        cfg.weight = cfg.baseWeight * min(max(overrun, 1), maxOverrun)
+    }
 
 	normalized := time.Duration(
 		float64(elapsed) *

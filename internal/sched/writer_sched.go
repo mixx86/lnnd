@@ -53,7 +53,7 @@ func (s *Service) signalScheduler() {
 
 func (s *Service) selectHighestPriorityWriter() int {
 	bestIndex := 0
-	bestPriority := -1
+	bestPriority := -1.0
 
 	for i, w := range s.waitingWriters {
 		cfg := s.WCB[w.source]
@@ -61,8 +61,8 @@ func (s *Service) selectHighestPriorityWriter() int {
 			continue
 		}
 
-		if int(cfg.weight) > bestPriority {
-			bestPriority = int(cfg.weight)
+		if cfg.weight > bestPriority {
+			bestPriority = cfg.weight
 			bestIndex = i
 		}
 	}
