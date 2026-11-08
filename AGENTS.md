@@ -16,35 +16,39 @@
 4. Record a baseline before changing anything: `go build ./...`,
    `go vet ./...`, `go test ./...`. You need to know what already failed.
 
-## 2. Architecture: a core and functional subsystems
+## 2. Describe intent, not the current instance
 
-lnnd is a daemon made of **functional subsystems**, each owning one domain,
-built on a **core** they all rely on. Keep that model in code and in docs.
-The [Core](docs/architecture.md#core) and
-[Functional subsystems](docs/architecture.md#functional-subsystems) tables
-say what belongs where and what exists today.
+The code implements the first cases of a broader design. Describe every
+component by the role it is designed for, and present what exists today as
+an example or as status:
 
-- **Requests are one domain, not the architecture.** Do not describe the
-  scheduler, the queues, network dispatch or persistence as request
-  machinery, and do not present request-specific pieces as universal; the
-  [requests section](docs/architecture.md#requests-subsystem) says which
-  pieces are request-specific.
-- **Do not classify by package alone.** Core packages such as `sched`,
-  `queues`, `network` and `ipc` also hold the parts of subsystems that plug
-  into them, and `store` hosts persistence domains.
-- **There is no subsystem interface, registry or plugin mechanism.**
-  `daemon.New` wires every component explicitly and
-  `network.HandleTCPMessage` dispatches every message explicitly. Do not
-  introduce such an abstraction unless asked, and never document one.
-- **Subsystems differ.** Not every subsystem has a queue, takes write turns
-  or follows the request lifecycle. `outbox` and `recovery` show the
-  existing pattern: their own package, their own file under `~/.lnn/`,
-  explicit wiring in `daemon.New`, and only the core services they need.
+- `SYMLINK_REQUEST` is one request type among the many to come: describe the
+  request path for requests, not for symlinks.
+- The store persists incoming content that must survive a crash, not
+  "requests"; the requests log is just the first thing it holds.
+
+Before writing a description, a name or a comment, ask what the component
+is for and whether the sentence will still be true when the next request
+type or the next kind of content lands. Real names stay exact
+(`RequestsQueue`, the `requests` log), but they do not define the concept.
+
+## 3. Architecture
+
+lnnd is layered: listeners at the top, peer sessions and the write scheduler
+in the middle, storage at the bottom.
+[docs/architecture.md](docs/architecture.md) describes the layers and their
+packages.
+
+- **Take the structure from the code.** Describe the layers that the
+  packages and the data path actually form. Do not impose groupings,
+  taxonomies or abstractions (interfaces, registries, plugin systems) that
+  the code does not have: `daemon.New` wires every component explicitly and
+  `network.HandleTCPMessage` dispatches every message explicitly.
 - **Import cycles shape the packages**: `recovery` is separate so `network`
   and `store` do not import each other; `ipc` takes `app.Services` because
   `daemon` imports `ipc`.
 
-## 3. Respect intentional design decisions
+## 4. Respect intentional design decisions
 
 Unconventional is not incorrect. Before calling something a bug, look for its
 reason in comments, docs and history. Deliberate choices in this codebase
@@ -52,15 +56,15 @@ include:
 
 - `SessionManager.Register` silently replaces the session of a UUID: a
   reconnecting peer must replace its stale session.
-- `OK` to a `SYMLINK_REQUEST` is sent only once the entry and its checkpoint
-  are fsynced. It means "stored and pending", not "accepted".
+- `OK` to a request is sent only once its entry and checkpoint are fsynced.
+  It means "stored and pending", not "accepted".
 - Crash recovery identifies requests by per-peer tag through the requests
   cache, never by `rmt_req_id` (rationale in
   `internal/store/requests_file.go`).
 - Tags are allocated per peer, not per connection, skip 0, and jump ahead on
   every start.
-- The outbox drops a peer's oldest frame when its window is full; a dropped
-  tag answers `ErrUnknownTag`.
+- The outbox drops a peer's oldest message when its window is full; a
+  dropped tag answers `ErrUnknownTag`.
 - The requests cache is written in the background without a write turn.
 - Without a detectable disk device the daemon runs without disk monitoring
   instead of refusing to start.
@@ -75,7 +79,7 @@ whether something is intentional, investigate further and report the
 uncertainty instead of "fixing" it. Never impose your preferred architecture
 or style.
 
-## 4. Write meaningful tests
+## 5. Write meaningful tests
 
 - **Every test needs a failure hypothesis.** Before writing it, state the
   contract it protects, the realistic defect it catches and why the expected
@@ -112,7 +116,7 @@ or style.
   reproduce it with a minimal failing test, apply the smallest fix, watch the
   test pass. Assert the contract, not the shape of the fix.
 
-## 5. Investigate and classify findings
+## 6. Investigate and classify findings
 
 A failing test is not a bug yet. First check that its expectation follows
 from an actual requirement or contract, that the behaviour is not
@@ -136,7 +140,7 @@ Classify every finding:
 Do not fill categories for the sake of it, and do not report preferences as
 findings.
 
-## 6. Verify and report honestly
+## 7. Verify and report honestly
 
 Before calling work done:
 
@@ -152,33 +156,31 @@ Report what ran and its result, what did not run and why, and the known
 limitations. Never claim a test passed or a defect was reproduced unless it
 actually was, and keep verified facts apart from assumptions.
 
-## 7. Keep the documentation accurate
+## 8. Keep the documentation accurate
 
 - Update `docs/` in the same commit as the change it describes.
-- Document what the code does today. When docs and code disagree, read the
-  code and document the verified behaviour.
+- Document what the code does today and what it is for (section 2). When
+  docs and code disagree, read the code and document the verified behaviour.
 - Mark status honestly: implemented, in progress, planned. Never present
   planned work as existing.
-- Generalize architectural concepts, not implementation details: the
-  requests WAL stays the requests WAL and `SubmitRequest` stays a request
-  operation. Never replace "request" with "subsystem" mechanically, and do
-  not make subsystems sound identical when their lifecycles differ.
 - Link to the document that owns a fact instead of restating it, and keep
-  each catalog (subsystems, core components, files) in its table instead of
-  listing its members again in prose: copies and lists go stale as the
-  project grows.
+  each catalog (packages, files, settings) in its table instead of listing
+  its members again in prose: copies and lists go stale as the project
+  grows.
 - A documentation change must not alter protocol semantics, wire formats or
   the IPC contract.
 - Other documents link to headings in `architecture.md`; keep those anchors
   working when you rename a heading.
 
-## 8. Commits and history
+## 9. Commits and history
 
 - Commit only when asked. Never push, force-push or rewrite history without
   explicit authorization: branches are published on `origin`, so rewriting
   them requires a force-push.
 - Check `git status` first, stage explicit paths, read `git diff --cached`
   before every commit, and leave unrelated or local files out.
+- Never amend or rewrite a commit that is already on the remote; put the
+  follow-up change in a new commit.
 - One purpose per commit (for example, tests and documentation in separate
   commits). Subjects follow the `type(scope): summary` style of the history
   (`feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `style`, `build`,
@@ -189,7 +191,7 @@ actually was, and keep verified facts apart from assumptions.
   your trailer to commits you did not author. Only the user knows who wrote
   past commits: confirm with them before attributing any.
 
-## 9. Never
+## 10. Never
 
 - Invent requirements, functionality, abstractions (interfaces, registries,
   frameworks) or architectural behaviour that the code does not have.

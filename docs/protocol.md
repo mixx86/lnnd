@@ -85,17 +85,17 @@ Mutual authentication via Ed25519 challenge-response. Both sides send their cred
 
 ## Message dispatch
 
-After the handshake each connection runs a read loop (`ReadFrame` → `HandleTCPMessage`). The loop is part of the core; it hands each message to the subsystem that owns it (see [architecture.md](architecture.md#functional-subsystems)):
+After the handshake each connection runs a read loop (`ReadFrame` → `HandleTCPMessage`):
 
-| Message received                          | Handled by | Action |
-|-------------------------------------------|------------|--------|
-| `OK`                                      | outbox, peer session | Removes the tag from the outbox and resolves the pending message |
-| `ERROR` with a tag                        | outbox, peer session, recovery | Same as `OK`, logged; on `ErrUnknownTag` the matching recovery entry is dropped. The connection stays open |
-| `ERROR` without a tag                     | network | Logged as a peer error; connection closes |
-| `RECOVER_REQUEST`                         | outbox | Resends the outbox frame with that tag, or replies `ERROR(ErrUnknownTag)` |
-| `SYMLINK_REQUEST`                         | requests, recovery | Submitted to the requests subsystem through the scheduler (see [lifecycle](architecture.md#inbound-request-lifecycle)); replies `OK` or `ERROR` with the request's tag. If the tag was owed by a recovery, the entry is resolved once the request is durable |
-| `HELLO` / `CHALLENGE` / `CHALLENGE_RESP`  | network | Replied with `ERROR(ErrInvalidState)`; connection closes |
-| anything else                             | network | Replied with `ERROR(ErrInvalidMessage)`; connection closes |
+| Message received                          | Action |
+|-------------------------------------------|--------|
+| `OK`                                      | Removes the tag from the outbox and resolves the pending message |
+| `ERROR` with a tag                        | Same as `OK`, logged; on `ErrUnknownTag` the matching recovery entry is dropped. The connection stays open |
+| `ERROR` without a tag                     | Logged as a peer error; connection closes |
+| `RECOVER_REQUEST`                         | Resends the outbox frame with that tag, or replies `ERROR(ErrUnknownTag)` |
+| `SYMLINK_REQUEST`                         | Submitted to the scheduler (see [lifecycle](architecture.md#inbound-request-lifecycle)); replies `OK` or `ERROR` with the request's tag. If the tag was owed by a recovery, the entry is resolved once the request is durable |
+| `HELLO` / `CHALLENGE` / `CHALLENGE_RESP`  | Replied with `ERROR(ErrInvalidState)`; connection closes |
+| anything else                             | Replied with `ERROR(ErrInvalidMessage)`; connection closes |
 
 Frames are written under a per-session mutex (`Session.Mu`) because the network read goroutine and IPC handlers can write to the same connection concurrently. Before the handshake completes, the connection belongs to a single goroutine and unlocked writes are used.
 
@@ -118,9 +118,9 @@ Recovery lets a daemon that crashed while persisting a request get it back from 
      │──── ERROR(ErrUnknownTag, tag 42) ─────────►│  recovery entry dropped
 ```
 
-**Sender — [outbox](architecture.md#outbox-subsystem).** Every outgoing request is kept per peer, keyed by tag, until the peer answers with `OK` or `ERROR`. The receiver only sends `OK` after the request and its checkpoint are fsynced, so a confirmed request can never need recovery. The window holds 256 requests per peer; when it is full the oldest one is dropped, and asking for it yields `ErrUnknownTag`. The outbox is mirrored to `~/.lnn/outbox` so the sender can answer even after its own crash.
+**Sender — outbox.** Every outgoing request is kept per peer, keyed by tag, until the peer answers with `OK` or `ERROR`. The receiver only sends `OK` after the request and its checkpoint are fsynced, so a confirmed request can never need recovery. The window holds 256 requests per peer; when it is full the oldest one is dropped, and asking for it yields `ErrUnknownTag`. The outbox is mirrored to `~/.lnn/outbox` so the sender can answer even after its own crash.
 
-**Receiver — pending recoveries ([recovery subsystem](architecture.md#recovery-subsystem)).** At startup, damaged request entries whose `peer_uuid` and `req_id` survived are looked up in the requests cache for their tag and written to `~/.lnn/requests.recovery` before the damaged WAL region is truncated. An entry leaves the list when the peer resends the request (once it is durable again) or answers `ErrUnknownTag`.
+**Receiver — pending recoveries.** At startup, damaged request entries whose `peer_uuid` and `req_id` survived are looked up in the requests cache for their tag and written to `~/.lnn/requests.recovery` before the damaged WAL region is truncated. An entry leaves the list when the peer resends the request (once it is durable again) or answers `ErrUnknownTag`.
 
 After an inbound handshake, the receiver sends one `RECOVER_REQUEST` per pending entry of that peer. Entries are not removed when sent, so if the connection drops before the peer answers, they are asked for again on the next connection.
 

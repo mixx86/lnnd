@@ -8,20 +8,10 @@ Users interact with lnn through the [`lnn`](https://github.com/mixx86/lnn) CLI; 
 
 ## How it works
 
-lnnd is made of functional subsystems, each owning one domain, built on a common core.
-
-**Core**
-
 - Listens on a **Unix socket** for requests from the local `lnn` CLI.
-- Handles all **TCP** communication with remote peers, authenticating each one via an **Ed25519 mutual handshake** before exchanging any data, and hands each message to the subsystem that owns it.
-- Runs a **write scheduler** that arbitrates disk writes between subsystems, monitors disk load and applies backpressure to peers when the daemon is overloaded.
-
-**Functional subsystems**
-
-- **Requests** — the most developed one: persists incoming link requests to an on-disk **write-ahead log** before acknowledging them, so they survive crashes and restarts.
-- **Outbox** — keeps the frames sent to each peer until the peer answers them, so they can be sent again after a crash (IPC does not send through it yet).
-- **Recovery** — after a crash, asks peers to resend the requests whose log entries were damaged.
-- More are planned; see the [roadmap](docs/roadmap.md).
+- Handles all **TCP** communication with remote peers, authenticating each one via an **Ed25519 mutual handshake** before exchanging any data.
+- Persists incoming content to an on-disk **write-ahead log** before acknowledging it, so it survives crashes and restarts.
+- Runs a **write scheduler** that monitors disk load and applies backpressure to peers when the daemon is overloaded.
 
 See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
@@ -58,13 +48,13 @@ LNND_IPC_SOCKET=/tmp/lnnd.sock
 lnnd    # runs the daemon in the foreground
 ```
 
-Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, generated on first run) and the files each subsystem persists. See [On-disk state](docs/architecture.md#on-disk-state) and [Identity storage](docs/architecture.md#identity-storage).
+Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, generated on first run) and everything else lnnd persists. See [On-disk state](docs/architecture.md#on-disk-state) and [Identity storage](docs/architecture.md#identity-storage).
 
 ## Documentation
 
 | Document                                   | Contents |
 |--------------------------------------------|----------|
-| [docs/architecture.md](docs/architecture.md) | Core and functional subsystems, package map, startup, on-disk state, write scheduler, each subsystem in detail, configuration |
+| [docs/architecture.md](docs/architecture.md) | Package map, startup, request lifecycle, scheduler, storage and crash recovery, configuration |
 | [docs/protocol.md](docs/protocol.md)         | LNNP wire format, message types, error codes, handshake, session states |
 | [docs/ipc.md](docs/ipc.md)                   | The Unix-socket contract used by the CLI |
 | [docs/trust-model.md](docs/trust-model.md)   | Peer permissions, templates, anti-flood rules, alerts *(planned)* |
@@ -80,9 +70,8 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 | Ed25519 mutual handshake                     | Done        |
 | TCP message dispatch loop                    | Done        |
 | IPC (CLI ↔ daemon)                           | Done        |
-| Write scheduler (write turns, backpressure)  | In progress |
-| Inbound requests queue                       | In progress |
-| Durable request log (WAL) + crash recovery   | In progress |
+| Inbound request queue + write scheduler      | In progress |
+| Durable request log (WAL) + crash recovery   | Done        |
 | Session state machine                        | In progress |
 | Remote symlinks                              | In progress |
 | Remote hard links                            | In progress |
