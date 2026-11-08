@@ -2,7 +2,7 @@
 
 The permission model is stored and enforced by lnnd. The commands shown are issued with the [`lnn`](https://github.com/mixx86/lnn) CLI.
 
-> Not implemented yet. Today every peer that completes the handshake is treated as `unknown`: its requests go through the queue and wait for resolution.
+> Not implemented yet. Today every peer that completes the handshake is treated as `unknown`: its requests go through the requests queue and wait for resolution.
 
 Every authenticated peer will have a permission set that controls what it can do on the local machine without going through an explicit request.
 

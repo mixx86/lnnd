@@ -2,6 +2,8 @@
 
 This is the interface between the [`lnn`](https://github.com/mixx86/lnn) CLI and lnnd. lnnd is the server; any client that follows this contract can drive it.
 
+IPC is part of lnnd's shared infrastructure: it is how the CLI reaches the functional subsystems. Its only operation today, `link` with type `symreq`, belongs to the [requests subsystem](architecture.md#requests-subsystem): it sends a link request to a peer.
+
 The CLI talks to the daemon over a Unix socket (path set by `LNND_IPC_SOCKET`). Each connection carries exactly one exchange: the client sends one JSON object and **half-closes its write side** (the daemon reads until EOF), then reads one JSON response.
 
 Request:
