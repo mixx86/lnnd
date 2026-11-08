@@ -120,6 +120,45 @@ func TestReopenRestoresUnconfirmedFrames(t *testing.T) {
 	}
 }
 
+func TestReopenAfterCompactionDoesNotReuseTags(t *testing.T) {
+	o, path := openTemp(t)
+	peer := uuid.New()
+
+	// A frame the peer never confirms stays in the window while newer
+	// ones are confirmed, so the compacted log keeps a frame whose tag
+	// lags far behind the last tag handed out.
+	o.Put(peer, request("/unconfirmed"))
+	var last uint32
+	for i := 0; i <= restartTagSkip; i++ {
+		last = o.Put(peer, request("/confirmed")).Header.Tag
+		o.Ack(peer, last)
+	}
+	if err := o.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open compacts the log, so the Open after it replays a compacted file.
+	o, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Close(); err != nil {
+		t.Fatal(err)
+	}
+	o, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer o.Close()
+
+	next := o.Put(peer, request("/new")).Header.Tag
+	if floor := last + restartTagSkip; next <= floor {
+		t.Fatalf("tag %d handed out after a restart, want > %d "+
+			"(last tag before the restart %d + %d)",
+			next, floor, last, restartTagSkip)
+	}
+}
+
 func TestReopenIgnoresTornTail(t *testing.T) {
 	o, path := openTemp(t)
 	peer := uuid.New()

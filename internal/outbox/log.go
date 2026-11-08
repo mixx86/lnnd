@@ -220,10 +220,12 @@ func (l *logFile) append(records [][]byte) error {
 func (o *Outbox) compact() error {
 	var buf []byte
 	for peer, w := range o.peers {
-		buf = append(buf, encodeRecord(opTag, peer, w.lastTag, nil)...)
 		for _, tag := range w.order {
 			buf = append(buf, encodeSent(peer, w.frames[tag])...)
 		}
+		// Last, because replaying a sent record moves lastTag back to that
+		// record's tag, which may be far behind the last tag handed out.
+		buf = append(buf, encodeRecord(opTag, peer, w.lastTag, nil)...)
 	}
 
 	if err := fsutil.WriteFileAtomic(o.log.path, buf); err != nil {

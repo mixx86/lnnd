@@ -1,16 +1,23 @@
 package network
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"errors"
 	"net"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"lnn/internal/outbox"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
+	"lnn/internal/queues"
 	"lnn/internal/recovery"
+	"lnn/internal/sched"
 )
 
 type harness struct {
@@ -38,7 +45,11 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = local.Close(); _ = remote.Close() })
 
 	return &harness{
-		srv:     &Server{Outbox: ob, Recovery: rp},
+		srv: &Server{
+			Outbox:    ob,
+			Recovery:  rp,
+			Scheduler: sched.NewService(""),
+		},
 		session: peer.NewSession(uuid.New(), nil, local),
 		remote:  remote,
 	}
@@ -180,36 +191,141 @@ func TestRequestRecoveriesSendsOwedTags(t *testing.T) {
 	}
 }
 
-func TestErrorFrameRoundTrip(t *testing.T) {
+// nextQueued plays the requests writer: it takes the request a handler
+// submitted to the scheduler.
+func nextQueued(t *testing.T, s *sched.Service) queues.PendingRequest {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		pr, ok, err := s.TryNextRequest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			return pr
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("request never reached the scheduler")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
+	cases := []struct {
+		name     string
+		writeErr error
+		want     protocol.Payload
+		wantOwed int
+	}{
+		{"durable", nil, protocol.OK{}, 0},
+		{
+			"write failed",
+			errors.New("write failed"),
+			protocol.Error{
+				Code:    protocol.ErrInternal,
+				Message: protocol.MsgErrInternal,
+			},
+			1,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			id := h.session.Remote.ID
+			const tag = 5
+			// The tag is owed by a crash recovery: this request is the
+			// peer's resend.
+			err := h.srv.Recovery.Add(
+				recovery.Entry{Peer: id, ReqID: 3, Tag: tag},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			replies := make(chan protocol.Frame, 1)
+			go func() {
+				if f, err := ReadFrame(h.remote); err == nil {
+					replies <- f
+				}
+			}()
+
+			req := protocol.Frame{
+				Body: protocol.SymlinkRequest{Src: "/a"},
+			}.WithTag(tag)
+			if err := <-h.handle(t, req); err != nil {
+				t.Fatal(err)
+			}
+			queued := nextQueued(t, h.srv.Scheduler)
+
+			select {
+			case f := <-replies:
+				t.Fatalf("replied %T before the write settled", f.Body)
+			case <-time.After(50 * time.Millisecond):
+			}
+			if owed := h.srv.Recovery.ForPeer(id); len(owed) != 1 {
+				t.Fatal("recovery settled before the resend was durable")
+			}
+
+			queued.Written <- c.writeErr
+
+			select {
+			case reply := <-replies:
+				if reply.Body != c.want || reply.Header.Tag != tag {
+					t.Fatalf("got %+v tag %d, want %+v tag %d",
+						reply.Body, reply.Header.Tag, c.want, tag)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no reply once the write settled")
+			}
+			owed := h.srv.Recovery.ForPeer(id)
+			if len(owed) != c.wantOwed {
+				t.Fatalf("recovery entries left %+v, want %d",
+					owed, c.wantOwed)
+			}
+		})
+	}
+}
+
+func TestFramesRoundTrip(t *testing.T) {
 	local, remote := net.Pipe()
 	defer local.Close()
 	defer remote.Close()
 
-	frames := []protocol.Frame{
-		protocol.Frame{Body: protocol.Error{
+	pubKey := ed25519.PublicKey(bytes.Repeat([]byte{1}, protocol.PublicKeySize))
+	bodies := []protocol.Payload{
+		protocol.Hello{ID: uuid.New(), PublicKey: pubKey},
+		protocol.Challenge{Nonce: [protocol.NonceSize]byte{2}},
+		protocol.ChallengeResp{
+			Signature: [protocol.ChallengeRespPayloadSize]byte{3},
+		},
+		protocol.Error{
 			Code:    protocol.ErrUnknownTag,
 			Message: protocol.MsgErrUnknownTag,
-		}}.WithTag(7),
-		protocol.Frame{Body: protocol.OK{}}.WithTag(8),
+		},
+		protocol.OK{},
+		protocol.RecoverRequest{},
+		protocol.SymlinkRequest{Src: "/a"},
+		protocol.SymlinkRequest{Src: "/a", Dst: "/b"},
 	}
 	go func() {
-		for _, f := range frames {
-			_ = WriteFrame(local, f)
+		for i, body := range bodies {
+			frame := protocol.Frame{Body: body}.WithTag(uint32(i + 1))
+			_ = WriteFrame(local, frame)
 		}
 	}()
 
-	// Reading both back proves the error frame carries no trailing bytes
-	// that would be mistaken for the next header.
-	for _, want := range frames {
+	// Reading them back from one stream also proves no frame carries bytes
+	// its header does not announce: they would be read as the next header.
+	for i, want := range bodies {
 		got, err := ReadFrame(remote)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("reading %T: %v", want, err)
 		}
-		if got.Header.Tag != want.Header.Tag ||
-			got.Body.Type() != want.Body.Type() {
-			t.Fatalf("got type %d tag %d, want type %d tag %d",
-				got.Body.Type(), got.Header.Tag,
-				want.Body.Type(), want.Header.Tag)
+		if got.Header.Tag != uint32(i+1) ||
+			!reflect.DeepEqual(got.Body, want) {
+			t.Fatalf("got %+v tag %d, want %+v tag %d",
+				got.Body, got.Header.Tag, want, i+1)
 		}
 	}
 }

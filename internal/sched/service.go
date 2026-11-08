@@ -3,6 +3,7 @@ package sched
 import (
 	"lnn/internal/queues"
 
+	"sync"
 	"sync/atomic"
 )
 
@@ -19,6 +20,9 @@ func NewService(diskDevice string) *Service {
 			FilesID:         &atomic.Uint32{},
 		},
 		activeWriters: map[*Writer]struct{}{},
+
+		pressureChangeCond:  sync.NewCond(&sync.Mutex{}),
+		pressureReleaseCond: sync.NewCond(&sync.Mutex{}),
 	}
 
 	s.WCB = map[SourceID]*WriterConfig{

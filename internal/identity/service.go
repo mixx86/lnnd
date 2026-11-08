@@ -83,6 +83,17 @@ func InitKeys() (ed25519.PrivateKey, ed25519.PublicKey, error) {
 	pubPath := filepath.Join(dir, "id_ed25519.pub")
 	privData, err := os.ReadFile(privPath)
 	if err == nil {
+		// ed25519 panics on a key of any other size, so a torn first write
+		// or a key in another format would crash the daemon at its first
+		// handshake instead of failing here.
+		if len(privData) != ed25519.PrivateKeySize {
+			return nil, nil, fmt.Errorf(
+				"invalid private key %s: %d bytes, want %d",
+				privPath,
+				len(privData),
+				ed25519.PrivateKeySize,
+			)
+		}
 		priv := ed25519.PrivateKey(privData)
 		pub := priv.Public().(ed25519.PublicKey)
 		return priv, pub, nil

@@ -25,7 +25,7 @@ Make the codebase consistent before it grows further.
       working directory.
 - [x] Rename the `SCREAMING_CASE` constants in `internal/store` to Go style
       (`F_HEADER_MAGIC_LEN` → `fileHeaderMagicLen`, `OP_KIND` → `opKind`).
-- [ ] Test coverage for `protocol` (encode/parse round trips), `network`
+- [x] Test coverage for `protocol` (encode/parse round trips), `network`
       (handshake) and `sched` (turns and backpressure).
 
 ## Phase 1 — Durable inbound pipeline

@@ -42,10 +42,13 @@ func (q *RequestsQueue) makePending(
 	req protocol.InboundRequest,
 	tag uint32,
 ) PendingRequest {
+	// Written is buffered for the writer's single result: SubmitRequest
+	// stops listening after writeConfirmTimeout, and an unbuffered send
+	// would then block the writer, and every request after it, forever.
 	return PendingRequest{
 		From:       from,
 		Req:        req,
-		Written:    make(chan error),
+		Written:    make(chan error, 1),
 		EnqueuedAt: uint64(time.Now().Unix()),
 		Tag:        tag,
 	}
