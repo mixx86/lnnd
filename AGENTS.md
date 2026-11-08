@@ -18,14 +18,15 @@
 
 ## 2. Describe intent, not the current instance
 
-The code implements the first cases of a broader design. Describe every
-component by the role it is designed for, and present what exists today as
-an example or as status:
+The code implements part of a broader design. Describe every component by
+the role it is designed for. What exists today is one case among others:
+present it as an example or as status, never as the first or the main one:
 
 - `SYMLINK_REQUEST` is one request type among the many to come: describe the
   request path for requests, not for symlinks.
 - The store persists incoming content that must survive a crash, not
-  "requests"; the requests log is just the first thing it holds.
+  "requests": requests are one kind of that content among others it may
+  hold in the future, such as links.
 
 Before writing a description, a name or a comment, ask what the component
 is for and whether the sentence will still be true when the next request
