@@ -2,6 +2,8 @@ package ipc
 
 import (
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestParseRequest_valid(t *testing.T) {
@@ -19,7 +21,8 @@ func TestParseRequest_valid(t *testing.T) {
 	if req.Type != "symreq" {
 		t.Errorf("Type: got %q, want %q", req.Type, "symreq")
 	}
-	// ParseRequest only deserializes; Src stays untouched until Validate runs.
+	// ParseRequest only deserializes; Src stays untouched until
+	// ValidateRequest runs.
 	if req.Src != "192.168.1.34://path/to/file" {
 		t.Errorf("Src: got %q, want %q", req.Src, "192.168.1.34://path/to/file")
 	}
@@ -27,12 +30,13 @@ func TestParseRequest_valid(t *testing.T) {
 		t.Errorf("Dst: got %q, want %q", req.Dst, "./link")
 	}
 	if req.IP != "" {
-		t.Errorf("IP: got %q, want it empty before Validate", req.IP)
+		t.Errorf("IP: got %q, want it empty before ValidateRequest", req.IP)
 	}
 }
 
 func TestParseRequest_ignoresIPField(t *testing.T) {
-	// IP is derived by Validate; a client must not be able to set it directly.
+	// IP is derived by ValidateRequest; a client must not be able to set
+	// it directly.
 	data := []byte(
 		`{"op":"link","type":"symreq",` +
 			`"src":"192.168.1.34://f","ip":"10.0.0.1"}`,
@@ -55,7 +59,7 @@ func TestParseRequest_invalidJSON(t *testing.T) {
 
 func TestValidate_valid(t *testing.T) {
 	req := &Request{Src: "192.168.1.34://path/to/file"}
-	if err := Validate(req); err != nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.IP != "192.168.1.34" {
@@ -68,7 +72,7 @@ func TestValidate_valid(t *testing.T) {
 
 func TestValidate_ipv6(t *testing.T) {
 	req := &Request{Src: "::1://path/to/file"}
-	if err := Validate(req); err != nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.IP != "::1" {
@@ -81,35 +85,35 @@ func TestValidate_ipv6(t *testing.T) {
 
 func TestValidate_emptySrc(t *testing.T) {
 	req := &Request{Src: ""}
-	if err := Validate(req); err == nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err == nil {
 		t.Fatal("expected error for empty Src")
 	}
 }
 
 func TestValidate_missingScheme(t *testing.T) {
 	req := &Request{Src: "192.168.1.34/path/to/file"}
-	if err := Validate(req); err == nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err == nil {
 		t.Fatal("expected error for missing ://")
 	}
 }
 
 func TestValidate_invalidIP(t *testing.T) {
 	req := &Request{Src: "notanip://path/to/file"}
-	if err := Validate(req); err == nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err == nil {
 		t.Fatal("expected error for invalid IP")
 	}
 }
 
 func TestValidate_hostnameRejected(t *testing.T) {
 	req := &Request{Src: "example.com://path/to/file"}
-	if err := Validate(req); err == nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err == nil {
 		t.Fatal("expected error: only IP addresses are accepted, not hostnames")
 	}
 }
 
 func TestValidate_pathNormalized(t *testing.T) {
 	req := &Request{Src: "192.168.1.34://path/../path/to/file"}
-	if err := Validate(req); err != nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/path/to/file" {
@@ -123,7 +127,7 @@ func TestValidate_pathNormalized(t *testing.T) {
 
 func TestValidate_pathCannotEscapeRoot(t *testing.T) {
 	req := &Request{Src: "192.168.1.34://../../etc/passwd"}
-	if err := Validate(req); err != nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/etc/passwd" {
@@ -133,7 +137,7 @@ func TestValidate_pathCannotEscapeRoot(t *testing.T) {
 
 func TestValidate_emptyPathBecomesRoot(t *testing.T) {
 	req := &Request{Src: "192.168.1.34://"}
-	if err := Validate(req); err != nil {
+	if err := ValidateRequest(req, &uuid.UUID{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/" {

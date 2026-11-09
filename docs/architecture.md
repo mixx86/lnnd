@@ -94,7 +94,7 @@ main()
      ├─ go Sched.Run()                          disk-load sampler + write-turn dispatch loop
      ├─ go Writers.Run(Sched)                   startup recovery, then batch-persist loop
      ├─ go server.Listen()                      TCP listener (network.Server)
-     └─ ipc.ListenIPC()                         Unix socket server (blocks main)
+     └─ ipc.Listen()                            Unix socket server (blocks main)
 ```
 
 ### On-disk state
@@ -235,7 +235,7 @@ Package `outbox`, file `~/.lnn/outbox`. Every message put in the outbox is kept 
 
 On disk the outbox is an append-only log of CRC-checked records. It is replayed and compacted at startup and compacted again whenever it grows past 1 MiB. On every start the tag counters jump ahead, so a tag that reached a peer but not the disk before a crash is never handed out again.
 
-Not wired yet: IPC sends its requests directly instead of through the outbox. Protocol-level behaviour: [protocol.md](protocol.md#recovery).
+IPC puts its requests in the outbox, but a session IPC dials has no read loop yet, so the answers on it never arrive and its messages are never removed. Protocol-level behaviour: [protocol.md](protocol.md#recovery).
 
 #### Pending recoveries
 

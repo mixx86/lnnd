@@ -7,9 +7,10 @@ import (
 type Request struct {
 	Op   string `json:"op"`
 	Type string `json:"type"`
-	Src  string `json:"src"` // <ip>://<path> until Validate splits it
+	Src  string `json:"src"` // <ip>://<path> until ValidateRequest splits it
 	Dst  string `json:"dst"`
-	IP   string `json:"-"` // Derived by Validate; never taken from the client
+	IP   string `json:"-"` // From ValidateRequest; never taken from the client
+	UUID string `json:"uuid"`
 }
 
 type Response struct {

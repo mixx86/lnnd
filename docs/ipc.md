@@ -16,6 +16,7 @@ Request:
 | `type` | `symreq` — ask a peer to create a symlink. `hard` is not implemented yet. |
 | `src`  | `<ip>://<path>`. The IP must parse; the path is cleaned and made absolute. |
 | `dst`  | Destination path (optional). |
+| `uuid` | The peer's UUID (optional). If it names a peer with an open session, the daemon sends over that session instead of dialing `<ip>`. |
 
 Response:
 
@@ -24,4 +25,6 @@ Response:
 { "ok": false, "err": "unsupported transport: quic" }
 ```
 
-For a `symreq`, the daemon dials the peer, runs the outbound handshake, sends the `SYMLINK_REQUEST` frame and then reports `ok: true`.
+An invalid request (bad `src` or `uuid`) gets `ok: false` with the reason.
+
+For a `symreq`, the daemon reuses the peer's session or dials the peer and runs the outbound handshake, puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox) and sends it, then reports `ok: true`. `ok: true` means the frame was written to the connection, not that the peer stored or accepted it.

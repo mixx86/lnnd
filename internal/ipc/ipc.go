@@ -1,33 +1,21 @@
 package ipc
 
 import (
-	"io"
 	app "lnn/internal"
 	"log"
 	"net"
 	"os"
 )
 
-func HandleConn(conn net.Conn, s app.Services) {
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Printf("Error closing IPC connection: %v", err)
-		}
-	}()
-	data, err := io.ReadAll(conn)
+func Send(conn net.Conn, res Response) (int, error) {
+	bytes, err := res.Encode()
 	if err != nil {
-		log.Printf("Error receiving data from the peer: %v", err)
-		return
+		return 0, err
 	}
-	req, err := ParseRequest(data)
-	if err != nil {
-		log.Printf("Error deserializing json data: %v", err)
-		return
-	}
-	HandleRequest(&req, conn, s)
+	return conn.Write(bytes)
 }
 
-func ListenIPC(s app.Services) error {
+func Listen(s app.Services) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: could not remove socket file %s: %v", path, err)

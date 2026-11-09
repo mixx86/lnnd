@@ -3,7 +3,7 @@ package ipc
 import (
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	app "lnn/internal"
 	"lnn/internal/config"
 	"lnn/internal/network"
@@ -12,11 +12,13 @@ import (
 	"net"
 	"path"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-// Validate mutates req: IP is split out of Src and Src keeps only the
+// ValidateRequest mutates req: IP is split out of Src and Src keeps only the
 // cleaned absolute path, so callers must not validate twice.
-func Validate(req *Request) error {
+func ValidateRequest(req *Request, id *uuid.UUID) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
 	}
@@ -33,89 +35,128 @@ func Validate(req *Request) error {
 	req.IP = parts[0]
 
 	req.Src = cleanPath
+
+	if req.UUID != "" {
+		parsedID, err := uuid.Parse(req.UUID)
+		if err != nil {
+			log.Printf("identification error: %v", err)
+			return err
+		}
+		*id = parsedID
+	}
+
 	return nil
+}
+
+func HandleConn(conn net.Conn, s app.Services) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("Error closing IPC connection: %v", err)
+		}
+	}()
+	data, err := io.ReadAll(conn)
+	if err != nil {
+		log.Printf("Error receiving data from the peer: %v", err)
+		return
+	}
+	req, err := ParseRequest(data)
+	if err != nil {
+		log.Printf("Error deserializing json data: %v", err)
+		return
+	}
+	HandleRequest(&req, conn, s)
 }
 
 func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 	switch req.Op {
 	case "link":
-		if err := Validate(req); err != nil {
+		id := uuid.UUID{}
+		err := ValidateRequest(req, &id)
+		if err != nil {
 			log.Printf("validation error: %v", err)
+			Send(unixConn, Response{
+				OK:  false,
+				Err: err.Error(),
+			})
 			return
 		}
+
 		switch req.Type {
 		case "symreq":
+			session, exists := s.Session.Get(id)
+
+			if exists {
+				frame := s.Outbox.Put(
+					session.Remote.ID,
+					protocol.SymlinkRequest{
+						Src: req.Src,
+						Dst: req.Dst,
+					},
+				)
+				if err := network.SendFrame(session, frame); err != nil {
+					Send(unixConn, Response{
+						OK:  false,
+						Err: err.Error(),
+					})
+					return
+				}
+				Send(unixConn, Response{
+					OK:  true,
+					Err: "",
+				})
+				return
+			}
+
 			transport, err := network.NewTransport(
 				config.DefaultNetworkConfig(),
 			)
 			if err != nil {
-				bytes, err := Response{
+				Send(unixConn, Response{
 					OK:  false,
 					Err: err.Error(),
-				}.Encode()
-				if err != nil {
-					return
-				}
-				_, err = unixConn.Write(bytes)
-				if err != nil {
-					return
-				}
+				})
 				return
 			}
 			conn, err := transport.Dial(context.Background(), req.IP)
 			if err != nil {
-				bytes, err := Response{
+				Send(unixConn, Response{
 					OK:  false,
 					Err: err.Error(),
-				}.Encode()
-				if err != nil {
-					return
-				}
-				_, err = unixConn.Write(bytes)
-				if err != nil {
-					return
-				}
+				})
 				return
 			}
-			session, err := network.OutboundHandshake(
+			session, err = network.OutboundHandshake(
 				conn,
 				s.Identity,
 				s.Session,
 			)
 			if err != nil {
-				bytes, err := Response{
+				Send(unixConn, Response{
 					OK:  false,
 					Err: err.Error(),
-				}.Encode()
-				if err != nil {
-					return
-				}
-				_, err = unixConn.Write(bytes)
-				if err != nil {
-					return
-				}
+				})
 				return
 			}
 
-			fmt.Printf("%v", req.Src)
-			err = network.SendFrame(session, protocol.Frame{
-				Body: protocol.SymlinkRequest{
-					Src: req.Src,
-					Dst: req.Dst,
-				},
+			frame := s.Outbox.Put(session.Remote.ID, protocol.SymlinkRequest{
+				Src: req.Src,
+				Dst: req.Dst,
 			})
-			if err != nil {
+
+			if err := network.SendFrame(session, frame); err != nil {
+				Send(unixConn, Response{
+					OK:  false,
+					Err: err.Error(),
+				})
 				return
 			}
 
-			bytes, err := Response{OK: true, Err: ""}.Encode()
-			if err != nil {
-				return
-			}
-			_, err = unixConn.Write(bytes)
-			if err != nil {
-				return
-			}
+			Send(unixConn, Response{
+				OK:  true,
+				Err: "",
+			})
+
+			return
 		case "hard":
 			log.Printf("Type: %v.\n", req.Type)
 		default:
