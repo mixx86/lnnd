@@ -44,7 +44,7 @@ func DiskUtilization(device string, interval time.Duration) (float64, error) {
 	return busyMS / elapsedMS * 100, nil
 }
 
-func (s *Service) sampleDisk() {
+func (s *Service) pollDiskLoad() {
 	for {
 		util, err := DiskUtilization(s.diskDevice, 200*time.Millisecond)
 		if err == nil {

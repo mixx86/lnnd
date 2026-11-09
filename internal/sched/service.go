@@ -25,7 +25,7 @@ func NewService(diskDevice string) *Service {
 		pressureReleaseCond: sync.NewCond(&sync.Mutex{}),
 	}
 
-	s.WCB = map[SourceID]*WriterConfig{
+	s.WCB = [sourceCount]WriterConfig{
 		RequestsCacheID: {
 			baseWeight:        RequestsCacheWeight,
 			weight:            RequestsCacheWeight,
@@ -65,7 +65,7 @@ func NewService(diskDevice string) *Service {
 
 func (s *Service) Run() {
 	if s.diskDevice != "" {
-		go s.sampleDisk()
+		go s.pollDiskLoad()
 	}
 
 	for range s.schedulerWake {

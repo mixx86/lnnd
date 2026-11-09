@@ -13,6 +13,9 @@ const (
 	RequestsCacheID SourceID = iota
 	RequestsID
 	FilesID
+
+	// sourceCount sizes WCB, so it must stay last.
+	sourceCount
 )
 
 type DiskLoadState uint8
@@ -25,8 +28,8 @@ const (
 
 type DiskLoadTracker struct {
 	/* State is read by every writer, and pollDiskLoad holds diskTrackerMu
-		* periodically, so an atomic (instead of using diskTrackerMu) keeps
-	    * writers from waiting on it.
+	 * periodically, so an atomic (instead of using diskTrackerMu) keeps
+	 * writers from waiting on it.
 	*/
 	State        atomic.Uint32
 	SmoothedUtil float64
@@ -88,7 +91,7 @@ type Service struct {
 
 	// WCB stands for Write Control Block, based on
 	// the same jargon used in OS process schedulers.
-	WCB map[SourceID]*WriterConfig
+	WCB [sourceCount]WriterConfig
 
 	waitingWriters []*Writer
 	activeWriters  map[*Writer]struct{}

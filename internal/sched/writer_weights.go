@@ -21,16 +21,19 @@ func (s *Service) recordWriteResultLocked(
 		return
 	}
 
-	cfg, ok := s.WCB[source]
-	if !ok || cfg.expectedBytes <= 0 {
+	if int(source) >= len(s.WCB) {
+		return
+	}
+	cfg := &s.WCB[source]
+	if cfg.expectedBytes <= 0 {
 		return
 	}
 
-    if cfg.typicalWriteTime > 0 {
-        overrun := float64(cfg.recentWriteTime) /
-                    float64(cfg.typicalWriteTime)
-        cfg.weight = cfg.baseWeight * min(max(overrun, 1), maxOverrun)
-    }
+	if cfg.typicalWriteTime > 0 {
+		overrun := float64(cfg.recentWriteTime) /
+			float64(cfg.typicalWriteTime)
+		cfg.weight = cfg.baseWeight * min(max(overrun, 1), maxOverrun)
+	}
 
 	normalized := time.Duration(
 		float64(elapsed) *

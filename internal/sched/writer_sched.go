@@ -25,6 +25,8 @@ func (s *Service) ReleaseWriteTurn(w *Writer, writtenBytes int64) {
 		return
 	}
 
+	writeTime := time.Since(w.grantedAt)
+
 	s.writeTurnMu.Lock()
 	defer s.writeTurnMu.Unlock()
 
@@ -35,7 +37,7 @@ func (s *Service) ReleaseWriteTurn(w *Writer, writtenBytes int64) {
 	s.recordWriteResultLocked(
 		w.source,
 		writtenBytes,
-		time.Since(w.grantedAt),
+		writeTime,
 	)
 
 	delete(s.activeWriters, w)
@@ -56,10 +58,10 @@ func (s *Service) selectHighestPriorityWriter() int {
 	bestPriority := -1.0
 
 	for i, w := range s.waitingWriters {
-		cfg := s.WCB[w.source]
-		if cfg == nil {
+		if int(w.source) >= len(s.WCB) {
 			continue
 		}
+		cfg := &s.WCB[w.source]
 
 		if cfg.weight > bestPriority {
 			bestPriority = cfg.weight
