@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"lnn/internal/config"
+	"lnn/internal/logger"
 )
 
 func NewService() (*Service, error) {
@@ -60,7 +61,7 @@ func InitUUID() (uuid.UUID, error) {
 		if err != nil {
 			return id, fmt.Errorf("failed to parse uuid: %w", err)
 		}
-		log.Printf("UUID loaded: %s", id)
+		logger.Daemon.Printf("UUID loaded: %s", id)
 		return id, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
