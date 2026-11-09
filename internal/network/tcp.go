@@ -30,10 +30,6 @@ func (t *TCPTransport) Dial(
 	return d.DialContext(ctx, "tcp", t.withPort(address))
 }
 
-// withPort lets callers pass a bare IP, since every peer listens on the
-// same configured port. JoinHostPort instead of concatenation because IPv6
-// needs brackets ("::1" -> "[::1]:5771"); an address that already has a
-// port is kept as is.
 func (t *TCPTransport) withPort(address string) string {
 	if _, _, err := net.SplitHostPort(address); err == nil {
 		return address

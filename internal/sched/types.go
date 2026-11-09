@@ -30,7 +30,7 @@ type DiskLoadTracker struct {
 	/* State is read by every writer, and pollDiskLoad holds diskTrackerMu
 	 * periodically, so an atomic (instead of using diskTrackerMu) keeps
 	 * writers from waiting on it.
-	*/
+	 */
 	State        atomic.Uint32
 	SmoothedUtil float64
 	Initialized  bool
