@@ -61,17 +61,29 @@ func (w *RequestsWriter) persistRequests(
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
+	w.batchBuf.Reset()
 	bw := bufio.NewWriter(w.reqFile.file)
 
-	err := w.reqFile.writeBatch(w.reqFile.file, bw, batch, reqIDs, opRequest)
+	err := w.reqFile.writeBatch(
+		w.reqFile.file,
+		&w.batchBuf,
+		batch,
+		reqIDs,
+		opRequest,
+	)
 	if err != nil {
 		notifyWriteResult(batch, err)
 		return err
 	}
 
-	written := int64(bw.Buffered()) + checkpointLen + fileHeaderLCOLen
+	written := int64(w.batchBuf.Len()) + checkpointLen + fileHeaderLCOLen
 
 	wturn := s.WaitWriteTurn(sched.RequestsID)
+	if _, err := w.batchBuf.WriteTo(bw); err != nil {
+		s.ReleaseWriteTurn(wturn, 0)
+		notifyWriteResult(batch, err)
+		return err
+	}
 	if err := w.commitBatch(bw); err != nil {
 		s.ReleaseWriteTurn(wturn, 0)
 		notifyWriteResult(batch, err)
@@ -110,12 +122,11 @@ func (w *RequestsWriter) commitBatch(bw *bufio.Writer) error {
 	return f.Sync()
 }
 
-// WARNING: writeBatch does ONLY write in the buffer, make sure to call
-// bw.Flush and f.Sync once you're done writing unless you don't actually want
-// to save the content.
+// WARNING: writeBatch does ONLY encode into buf, write it to the file and
+// call f.Sync yourself or the content is never saved.
 func (r *RequestsFile) writeBatch(
 	f *os.File,
-	bw *bufio.Writer,
+	buf io.Writer,
 	batch []queues.PendingRequest,
 	reqIDs []uint32,
 	op opKind,
@@ -175,7 +186,7 @@ func (r *RequestsFile) writeBatch(
 		req := make([]byte, 0, entryLength)
 		req = append(req, header[:]...)
 		req = append(req, fields...)
-		if _, err := bw.Write(req); err != nil {
+		if _, err := buf.Write(req); err != nil {
 			return err
 		}
 	}

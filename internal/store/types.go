@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"lnn/internal/recovery"
 	"lnn/internal/sched"
 	"os"
@@ -38,6 +39,7 @@ type RequestsWriter struct {
 	pending *recovery.Pending
 
 	reqFile  *RequestsFile
+	batchBuf bytes.Buffer
 	reqCache *RequestsCache
 }
 
