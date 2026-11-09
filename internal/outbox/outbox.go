@@ -24,9 +24,9 @@ const (
 )
 
 type window struct {
-	lastTag uint32
-	order   []uint32
-	frames  map[uint32]protocol.Frame
+	lastTag     uint32
+	unackedTags []uint32
+	frames      map[uint32]protocol.Frame
 }
 
 type Outbox struct {
@@ -58,16 +58,16 @@ func (o *Outbox) Put(peer uuid.UUID, body protocol.Payload) protocol.Frame {
 	w := o.window(peer)
 	tag := w.nextTag()
 
-	if len(w.order) >= Window {
-		oldest := w.order[0]
-		w.order = w.order[1:]
+	if len(w.unackedTags) >= Window {
+		oldest := w.unackedTags[0]
+		w.unackedTags = w.unackedTags[1:]
 		delete(w.frames, oldest)
 		o.enqueue(encodeRemoved(peer, oldest))
 	}
 
 	frame := protocol.Frame{Body: body}.WithTag(tag)
 	w.frames[tag] = frame
-	w.order = append(w.order, tag)
+	w.unackedTags = append(w.unackedTags, tag)
 	o.enqueue(encodeSent(peer, frame))
 
 	return frame
@@ -85,8 +85,9 @@ func (o *Outbox) Get(peer uuid.UUID, tag uint32) (protocol.Frame, bool) {
 	return frame, ok
 }
 
-// Ack is called for both OK and ERROR: either way the peer has answered,
-// so the frame will never be asked for again.
+// Ack marks the end of the exchange the tag carried, not that the peer
+// accepted the message: it is called for both OK and ERROR, since either
+// way the peer has answered and will never ask for the frame again.
 func (o *Outbox) Ack(peer uuid.UUID, tag uint32) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -100,9 +101,9 @@ func (o *Outbox) Ack(peer uuid.UUID, tag uint32) bool {
 	}
 
 	delete(w.frames, tag)
-	for i, t := range w.order {
+	for i, t := range w.unackedTags {
 		if t == tag {
-			w.order = append(w.order[:i], w.order[i+1:]...)
+			w.unackedTags = append(w.unackedTags[:i], w.unackedTags[i+1:]...)
 			break
 		}
 	}

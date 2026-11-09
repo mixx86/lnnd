@@ -63,7 +63,7 @@ func TestFullWindowEvictsOldest(t *testing.T) {
 	if _, ok := o.Get(peer, first); ok {
 		t.Fatal("oldest frame survived a full window")
 	}
-	if n := len(o.window(peer).order); n != Window {
+	if n := len(o.window(peer).unackedTags); n != Window {
 		t.Fatalf("window holds %d frames, want %d", n, Window)
 	}
 }

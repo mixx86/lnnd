@@ -117,15 +117,18 @@ func (o *Outbox) apply(record []byte) error {
 			return err
 		}
 		if _, exists := w.frames[tag]; !exists {
-			w.order = append(w.order, tag)
+			w.unackedTags = append(w.unackedTags, tag)
 		}
 		w.frames[tag] = protocol.Frame{Body: payload}.WithTag(tag)
 		w.lastTag = tag
 	case opRemoved:
 		delete(w.frames, tag)
-		for i, t := range w.order {
+		for i, t := range w.unackedTags {
 			if t == tag {
-				w.order = append(w.order[:i], w.order[i+1:]...)
+				w.unackedTags = append(
+					w.unackedTags[:i],
+					w.unackedTags[i+1:]...,
+				)
 				break
 			}
 		}
@@ -220,11 +223,11 @@ func (l *logFile) append(records [][]byte) error {
 func (o *Outbox) compact() error {
 	var buf []byte
 	for peer, w := range o.peers {
-		for _, tag := range w.order {
+		for _, tag := range w.unackedTags {
 			buf = append(buf, encodeSent(peer, w.frames[tag])...)
 		}
-		// Last, because replaying a sent record moves lastTag back to that
-		// record's tag, which may be far behind the last tag handed out.
+		// Must be the peer's last record: otherwise, on replay after a restart,
+		// lastTag ends up with the tag of a sent record, which may be smaller.
 		buf = append(buf, encodeRecord(opTag, peer, w.lastTag, nil)...)
 	}
 
