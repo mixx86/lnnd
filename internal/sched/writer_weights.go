@@ -29,12 +29,6 @@ func (s *Service) recordWriteResultLocked(
 		return
 	}
 
-	if cfg.typicalWriteTime > 0 {
-		overrun := float64(cfg.recentWriteTime) /
-			float64(cfg.typicalWriteTime)
-		cfg.weight = cfg.baseWeight * min(max(overrun, 1), maxOverrun)
-	}
-
 	normalized := time.Duration(
 		float64(elapsed) *
 			float64(cfg.expectedBytes) /
@@ -57,6 +51,12 @@ func (s *Service) recordWriteResultLocked(
 		)
 	}
 	cfg.samples++
+
+	if cfg.typicalWriteTime > 0 {
+		overrun := float64(cfg.recentWriteTime) /
+			float64(cfg.typicalWriteTime)
+		cfg.weight = cfg.baseWeight * min(max(overrun, 1), maxOverrun)
+	}
 
 	diskNormal := s.diskLoad.GetState() == DiskLoadNormal
 
