@@ -50,6 +50,17 @@ The code already says what it does. A comment is only justified when it
 carries information the code cannot: the reason behind a choice, a
 constraint coming from outside, a trade-off, or a trap for the next reader.
 
+A comment must pass both tests, or it should not exist:
+
+- **The code cannot tell the reason.** If deleting the comment loses
+  nothing a careful reader could not recover from the code itself, it
+  is redundant.
+- **Ignoring it breaks something silently.** Without the comment,
+  someone could change the code and nothing would catch it: not the
+  compiler, not `go vet`, not a test. A constraint the toolchain
+  already enforces, such as an import cycle or a type mismatch, needs
+  no comment.
+
 ```go
 // Bad: repeats the name and signature.
 // NewService creates a new IdentityService by loading or generating
@@ -63,14 +74,15 @@ tag = s.Tag.Add(1)
 
 ```go
 // Good: explains a decision the code cannot express.
-// Reply only after fsync: OK promises the peer the request survives
-// a crash, so acknowledging earlier would be a lie.
-<-req.Written
+// Must be the peer's last record: otherwise, on replay after a restart,
+// lastTag ends up with the tag of a sent record, which may be smaller.
+buf = append(buf, encodeRecord(opTag, peer, w.lastTag, nil)...)
 
 // Good: justifies a design constraint.
-// ipc receives app.Services instead of *daemon.Daemon: daemon already
-// imports ipc, so importing it back would create a cycle.
-func HandleConn(conn net.Conn, s app.Services) {
+// Ack marks the end of the exchange the tag carried, not that the peer
+// accepted the message: it is called for both OK and ERROR, since either
+// way the peer has answered and will never ask for the frame again.
+func (o *Outbox) Ack(peer uuid.UUID, tag uint32) bool {
 
 // Good: records an external fact.
 // 4096 is Linux PATH_MAX; longer paths could never be created anyway.
