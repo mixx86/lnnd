@@ -6,6 +6,7 @@ import (
 
 	"fmt"
 	"io"
+	"lnn/internal/logger"
 	"lnn/internal/protocol"
 	"lnn/internal/queues"
 	"lnn/internal/sched"
@@ -58,13 +59,18 @@ func (w *RequestsWriter) persistRequests(
 	}()
 
 	f := w.reqFile.file
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+	start, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+	prevLco, err := w.reqFile.getLco()
+	if err != nil {
 		return err
 	}
 	w.batchBuf.Reset()
 	bw := bufio.NewWriter(w.reqFile.file)
 
-	err := w.reqFile.writeBatch(
+	err = w.reqFile.writeBatch(
 		w.reqFile.file,
 		&w.batchBuf,
 		batch,
@@ -79,12 +85,17 @@ func (w *RequestsWriter) persistRequests(
 	written := int64(w.batchBuf.Len()) + checkpointLen + fileHeaderLCOLen
 
 	wturn := s.WaitWriteTurn(sched.RequestsID)
-	if _, err := w.batchBuf.WriteTo(bw); err != nil {
-		s.ReleaseWriteTurn(wturn, 0)
-		notifyWriteResult(batch, err)
-		return err
+	_, err = w.batchBuf.WriteTo(bw)
+	if err == nil {
+		err = w.commitBatch(bw)
 	}
-	if err := w.commitBatch(bw); err != nil {
+	if err != nil {
+		// A partial write (e.g. disk full) leaves a cut entry at the tail.
+		// Later batches would land after it and every checkpoint would
+		// fail parsing it until a restart repaired the file.
+		if rerr := w.rollbackBatch(start, prevLco); rerr != nil {
+			logger.Daemon.Printf("rolling back failed batch: %v", rerr)
+		}
 		s.ReleaseWriteTurn(wturn, 0)
 		notifyWriteResult(batch, err)
 		return err
@@ -93,6 +104,21 @@ func (w *RequestsWriter) persistRequests(
 
 	notifyWriteResult(batch, nil)
 	return nil
+}
+
+// rollbackBatch restores the file to how it was before the batch, lco
+// included: commitBatch may have already pointed lco at a checkpoint
+// past end. Going back to the last complete checkpoint instead would
+// keep a batch that its writers were told failed.
+func (w *RequestsWriter) rollbackBatch(end, lco int64) error {
+	f := w.reqFile.file
+	if err := f.Truncate(end); err != nil {
+		return err
+	}
+	if err := w.reqFile.setLco(uint64(lco)); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func (w *RequestsWriter) commitBatch(bw *bufio.Writer) error {
