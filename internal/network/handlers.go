@@ -45,6 +45,10 @@ func HandleConn(conn net.Conn, srv *Server) {
 		return
 	}
 
+	serveSession(conn, p, srv)
+}
+
+func serveSession(conn net.Conn, p *peer.Session, srv *Server) {
 	// Sent concurrently so the read loop is already draining replies; both
 	// sides writing without reading could otherwise fill the socket.
 	go requestRecoveries(srv, p)
