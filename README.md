@@ -70,7 +70,9 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 | Ed25519 mutual handshake                     | Done        |
 | TCP message dispatch loop                    | Done        |
 | IPC (CLI ↔ daemon)                           | Done        |
-| Inbound request queue + write scheduler      | In progress |
+| Inbound request queue + backpressure         | Done        |
+| Write scheduler + adaptive weights           | Done        |
+| Write scheduler budgets and tickets          | Planned     |
 | Durable request log (WAL) + crash recovery   | Done        |
 | Session state machine                        | In progress |
 | Remote symlinks                              | In progress |

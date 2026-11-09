@@ -33,8 +33,9 @@ Make the codebase consistent before it grows further.
 Finish the path from "peer sends a request" to "request is safely on disk".
 See [architecture.md](architecture.md#inbound-request-lifecycle).
 
-- [ ] Write scheduler: finish adaptive tuning from the per-source write-time
+- [x] Write scheduler: finish adaptive tuning from the per-source write-time
       baselines recorded by `ReleaseWriteTurn`.
+- [ ] Write scheduler: per-source budget and tickets (lottery scheduling).
 - [x] Requests WAL + crash recovery: outbox on the sender, pending
       recoveries on the receiver, `RECOVER_REQUEST` / `ErrUnknownTag`
       handling, 32-bit per-peer tags.
