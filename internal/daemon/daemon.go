@@ -97,5 +97,5 @@ func (d *Daemon) Start() error {
 			logger.Daemon.Fatalf("Listener failed to start: %v", err)
 		}
 	}()
-	return ipc.Listen(d.Services)
+	return ipc.Listen(d.Services, server)
 }

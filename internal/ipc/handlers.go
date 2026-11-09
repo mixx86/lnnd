@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	app "lnn/internal"
-	"lnn/internal/config"
 	"lnn/internal/network"
 	"lnn/internal/protocol"
 	"log"
@@ -48,7 +47,7 @@ func ValidateRequest(req *Request, id *uuid.UUID) error {
 	return nil
 }
 
-func HandleConn(conn net.Conn, s app.Services) {
+func HandleConn(conn net.Conn, s app.Services, srv *network.Server) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			log.Printf("Error closing IPC connection: %v", err)
@@ -64,10 +63,15 @@ func HandleConn(conn net.Conn, s app.Services) {
 		log.Printf("Error deserializing json data: %v", err)
 		return
 	}
-	HandleRequest(&req, conn, s)
+	HandleRequest(&req, conn, s, srv)
 }
 
-func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
+func HandleRequest(
+	req *Request,
+	unixConn net.Conn,
+	s app.Services,
+	srv *network.Server,
+) {
 	switch req.Op {
 	case "link":
 		id := uuid.UUID{}
@@ -107,29 +111,7 @@ func HandleRequest(req *Request, unixConn net.Conn, s app.Services) {
 				return
 			}
 
-			transport, err := network.NewTransport(
-				config.DefaultNetworkConfig(),
-			)
-			if err != nil {
-				Send(unixConn, Response{
-					OK:  false,
-					Err: err.Error(),
-				})
-				return
-			}
-			conn, err := transport.Dial(context.Background(), req.IP)
-			if err != nil {
-				Send(unixConn, Response{
-					OK:  false,
-					Err: err.Error(),
-				})
-				return
-			}
-			session, err = network.OutboundHandshake(
-				conn,
-				s.Identity,
-				s.Session,
-			)
+			session, err = srv.Connect(context.Background(), req.IP)
 			if err != nil {
 				Send(unixConn, Response{
 					OK:  false,

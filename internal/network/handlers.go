@@ -22,17 +22,12 @@ func HandleConn(conn net.Conn, srv *Server) {
 			)
 		}
 	}()
-	if keepAlive, ok := srv.Transport.(interface {
-		ConfigureKeepAlive(net.Conn) error
-	}); ok {
-		if err := keepAlive.ConfigureKeepAlive(conn); err != nil {
-			logger.Daemon.Printf("Error configuring KeepAlive: %v", err)
-			conn.Close()
-		}
-	}
-
-	if conn.SetDeadline(time.Now().Add(5*time.Second)) != nil {
-		logger.Daemon.Printf("Couldn't set deadline in %s", conn.RemoteAddr())
+	if err := srv.prepareConn(conn); err != nil {
+		logger.Daemon.Printf(
+			"Error preparing connection %s: %v",
+			conn.RemoteAddr(),
+			err,
+		)
 		return
 	}
 	p, err := InboundHandshake(conn, srv.Identity, srv.Sessions)

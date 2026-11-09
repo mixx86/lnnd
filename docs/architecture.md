@@ -74,7 +74,7 @@ type Services struct {
 }
 ```
 
-`daemon.Daemon` embeds it. `recovery` is its own package so that `network` (which resolves entries) and `store` (which adds them) do not import each other. `ipc` consumes `app.Services` without importing `daemon` — `daemon` already imports `ipc` for `Start()`, so importing it back would create a cycle.
+`daemon.Daemon` embeds it. `recovery` is its own package so that `network` (which resolves entries) and `store` (which adds them) do not import each other. `ipc` consumes `app.Services`, plus the `network.Server` it opens outbound sessions with, without importing `daemon` — `daemon` already imports `ipc` for `Start()`, so importing it back would create a cycle.
 
 ### Startup sequence
 
@@ -235,15 +235,15 @@ Package `outbox`, file `~/.lnn/outbox`. Every message put in the outbox is kept 
 
 On disk the outbox is an append-only log of CRC-checked records. It is replayed and compacted at startup and compacted again whenever it grows past 1 MiB. On every start the tag counters jump ahead, so a tag that reached a peer but not the disk before a crash is never handed out again.
 
-IPC puts its requests in the outbox, but a session IPC dials has no read loop yet, so the answers on it never arrive and its messages are never removed. Protocol-level behaviour: [protocol.md](protocol.md#recovery).
+IPC puts its requests in the outbox and sends them over the peer's session, opening one with `network.Server.Connect` when there is none. Outbound sessions run the same read loop as inbound ones, so their answers reach the outbox too. Protocol-level behaviour: [protocol.md](protocol.md#recovery).
 
 #### Pending recoveries
 
 Package `recovery`, file `~/.lnn/requests.recovery`. It lists what peers still owe after a crash: log entries that were damaged but still name their peer and request id, each with the tag found in the requests cache during [startup recovery](#startup-recovery). It is its own package so that `store`, which adds entries, and `network`, which settles them, do not import each other.
 
-After each inbound handshake the network layer sends one `RECOVER_REQUEST` per entry of that peer. An entry is settled once the peer's resend is durable again, or when the peer answers `ErrUnknownTag`. The file is rewritten atomically on every change, so a second crash cannot forget what peers still owe.
+After each handshake, inbound or outbound, the network layer sends one `RECOVER_REQUEST` per entry of that peer. An entry is settled once the peer's resend is durable again, or when the peer answers `ErrUnknownTag`. The file is rewritten atomically on every change, so a second crash cannot forget what peers still owe.
 
-Not wired yet: outbound sessions (opened from IPC) do not send pending `RECOVER_REQUEST`s. Protocol-level behaviour: [protocol.md](protocol.md#recovery).
+Protocol-level behaviour: [protocol.md](protocol.md#recovery).
 
 ---
 

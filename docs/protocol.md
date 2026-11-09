@@ -122,9 +122,7 @@ Recovery lets a daemon that crashed while persisting a request get it back from 
 
 **Receiver — pending recoveries.** At startup, damaged request entries whose `peer_uuid` and `req_id` survived are looked up in the requests cache for their tag and written to `~/.lnn/requests.recovery` before the damaged WAL region is truncated. An entry leaves the list when the peer resends the request (once it is durable again) or answers `ErrUnknownTag`.
 
-After an inbound handshake, the receiver sends one `RECOVER_REQUEST` per pending entry of that peer. Entries are not removed when sent, so if the connection drops before the peer answers, they are asked for again on the next connection.
-
-> Not wired yet: IPC sending its requests through the outbox, and outbound sessions (opened from IPC) sending pending `RECOVER_REQUEST`s.
+After every handshake, inbound or outbound, the receiver sends one `RECOVER_REQUEST` per pending entry of that peer. Entries are not removed when sent, so if the connection drops before the peer answers, they are asked for again on the next connection.
 
 ## Session states
 

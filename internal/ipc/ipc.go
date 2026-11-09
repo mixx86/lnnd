@@ -2,6 +2,7 @@ package ipc
 
 import (
 	app "lnn/internal"
+	"lnn/internal/network"
 	"log"
 	"net"
 	"os"
@@ -15,7 +16,7 @@ func Send(conn net.Conn, res Response) (int, error) {
 	return conn.Write(bytes)
 }
 
-func Listen(s app.Services) error {
+func Listen(s app.Services, srv *network.Server) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: could not remove socket file %s: %v", path, err)
@@ -30,6 +31,6 @@ func Listen(s app.Services) error {
 			log.Printf("Error accepting IPC connection: %v", err)
 			continue
 		}
-		go HandleConn(conn, s)
+		go HandleConn(conn, s, srv)
 	}
 }

@@ -41,7 +41,7 @@ See [architecture.md](architecture.md#inbound-request-lifecycle).
       handling, 32-bit per-peer tags.
 - [x] Send `RECOVER_REQUEST` when a peer with pending recoveries completes
       the inbound handshake.
-- [ ] IPC sends requests through the outbox (tags + pending message), and
+- [x] IPC sends requests through the outbox (tags + pending message), and
       outbound sessions also send pending `RECOVER_REQUEST`s.
 - [ ] Session state machine: explicit states and transitions, reject
       messages that are invalid for the current state with
