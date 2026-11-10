@@ -30,7 +30,7 @@ func FuzzReadFrame(f *testing.F) {
 		protocol.ChallengeResp{},
 		protocol.Error{
 			Code:    protocol.ErrOverloaded,
-			Message: protocol.MsgErrOverloaded,
+			Message: protocol.MsgErrOverloaded.Error(),
 		},
 		protocol.OK{},
 		protocol.RecoverRequest{},

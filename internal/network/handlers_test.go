@@ -141,7 +141,7 @@ func TestUnknownTagErrorDropsRecoveryAndKeepsConnection(t *testing.T) {
 	err := <-h.handle(t, protocol.Frame{
 		Body: protocol.Error{
 			Code:    protocol.ErrUnknownTag,
-			Message: protocol.MsgErrUnknownTag,
+			Message: protocol.MsgErrUnknownTag.Error(),
 		},
 	}.WithTag(5))
 	if err != nil {
@@ -149,6 +149,46 @@ func TestUnknownTagErrorDropsRecoveryAndKeepsConnection(t *testing.T) {
 	}
 	if left := h.srv.Recovery.ForPeer(id); len(left) != 0 {
 		t.Fatalf("recovery entries left: %+v", left)
+	}
+}
+
+// A payload that fails to parse was still read whole, so the stream stays
+// in sync: the peer gets an ERROR with the frame's tag and the session
+// keeps serving.
+func TestInvalidPayloadKeepsSession(t *testing.T) {
+	h := newHarness(t)
+	go func() {
+		serveSession(h.session.Conn, h.session, h.srv)
+		_ = h.session.Conn.Close()
+	}()
+
+	err := WriteFrame(h.remote, protocol.Frame{
+		Body: protocol.SymlinkRequest{Src: "relative/path"},
+	}.WithTag(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadFrame(h.remote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.Body.(protocol.Error); !ok || got.Header.Tag != 7 {
+		t.Fatalf("got %+v tag %d, want ERROR tag 7",
+			got.Body, got.Header.Tag)
+	}
+
+	err = WriteFrame(h.remote, protocol.Frame{
+		Body: protocol.RecoverRequest{},
+	}.WithTag(8))
+	if err != nil {
+		t.Fatalf("session closed after an invalid payload: %v", err)
+	}
+	got, err = ReadFrame(h.remote)
+	if err != nil {
+		t.Fatalf("session closed after an invalid payload: %v", err)
+	}
+	if got.Header.Tag != 8 {
+		t.Fatalf("got reply for tag %d, want 8", got.Header.Tag)
 	}
 }
 
@@ -224,7 +264,7 @@ func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
 			errors.New("write failed"),
 			protocol.Error{
 				Code:    protocol.ErrInternal,
-				Message: protocol.MsgErrInternal,
+				Message: protocol.MsgErrInternal.Error(),
 			},
 			1,
 		},
@@ -301,7 +341,7 @@ func TestFramesRoundTrip(t *testing.T) {
 		},
 		protocol.Error{
 			Code:    protocol.ErrUnknownTag,
-			Message: protocol.MsgErrUnknownTag,
+			Message: protocol.MsgErrUnknownTag.Error(),
 		},
 		protocol.OK{},
 		protocol.RecoverRequest{},
