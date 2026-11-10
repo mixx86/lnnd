@@ -50,14 +50,14 @@ The receiver validates the announced length against the message type before read
 
 | Code | Name                 | Message                              |
 |------|----------------------|--------------------------------------|
-| `-1` | `ErrInvalidMessage`  | Invalid message.                     |
-| `-2` | `ErrInvalidState`    | Invalid state.                       |
-| `-3` | `ErrRequestRejected` | Request rejected.                    |
-| `-4` | `ErrOverloaded`      | Daemon overloaded.                   |
+| `-1` | `ErrInvalidMessage`  | invalid message                      |
+| `-2` | `ErrInvalidState`    | invalid state                        |
+| `-3` | `ErrRequestRejected` | request rejected                     |
+| `-4` | `ErrOverloaded`      | daemon overloaded                    |
 | `-5` | `ErrTooManyPending`  | *(no message — internal limit)*      |
-| `-6` | `ErrPendingTimeout`  | Timed out waiting for a response.    |
-| `-7` | `ErrInternal`        | Internal error.                      |
-| `-8` | `ErrUnknownTag`      | Unknown tag.                         |
+| `-6` | `ErrPendingTimeout`  | timed out waiting for a response     |
+| `-7` | `ErrInternal`        | internal error                       |
+| `-8` | `ErrUnknownTag`      | unknown tag                          |
 
 ## Handshake
 
@@ -91,11 +91,13 @@ After the handshake each connection runs a read loop (`ReadFrame` → `HandleTCP
 |-------------------------------------------|--------|
 | `OK`                                      | Removes the tag from the outbox and resolves the pending message |
 | `ERROR` with a tag                        | Same as `OK`, logged; on `ErrUnknownTag` the matching recovery entry is dropped. The connection stays open |
-| `ERROR` without a tag                     | Logged as a peer error; connection closes |
+| `ERROR` without a tag                     | Logged as a peer error. The connection stays open |
 | `RECOVER_REQUEST`                         | Resends the outbox frame with that tag, or replies `ERROR(ErrUnknownTag)` |
 | `SYMLINK_REQUEST`                         | Submitted to the scheduler (see [lifecycle](architecture.md#inbound-request-lifecycle)); replies `OK` or `ERROR` with the request's tag. If the tag was owed by a recovery, the entry is resolved once the request is durable |
-| `HELLO` / `CHALLENGE` / `CHALLENGE_RESP`  | Replied with `ERROR(ErrInvalidState)`; connection closes |
-| anything else                             | Replied with `ERROR(ErrInvalidMessage)`; connection closes |
+| `HELLO` / `CHALLENGE` / `CHALLENGE_RESP`  | Replied with `ERROR(ErrInvalidState)`. The connection stays open |
+| a payload that fails to parse             | Replied with `ERROR(ErrInvalidMessage)` with the frame's tag. The connection stays open: the payload was read whole, so the next frame starts where expected |
+
+The connection closes only when the stream can no longer be followed: the connection fails, or a header is malformed, announces an unknown type or an invalid payload length. No `ERROR` is sent then, since the frame's tag cannot be trusted.
 
 Frames are written under a per-session mutex (`Session.Mu`) because the network read goroutine and IPC handlers can write to the same connection concurrently. Before the handshake completes, the connection belongs to a single goroutine and unlocked writes are used.
 
