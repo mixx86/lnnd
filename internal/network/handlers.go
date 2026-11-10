@@ -43,21 +43,32 @@ func HandleConn(conn net.Conn, srv *Server) {
 	serveSession(conn, p, srv)
 }
 
-func serveSession(conn net.Conn, p *peer.Session, srv *Server) {
+// WARNING: This function assumes that handshake has been
+// succesfully completed
+func serveSession(conn net.Conn, s *peer.Session, srv *Server) {
 	// Sent concurrently so the read loop is already draining replies; both
 	// sides writing without reading could otherwise fill the socket.
-	go requestRecoveries(srv, p)
+	go requestRecoveries(srv, s)
 
 	for {
 		msg, err := ReadFrame(conn)
 		if err != nil {
+			if errors.Is(err, protocol.MsgErrInvalidMessage) {
+				logger.Protocol.Printf("Invalid message: %v", err)
+				SendFrame(s, protocol.Frame{
+					Body: protocol.Error{
+						Code:    protocol.ErrParsingMessage,
+						Message: protocol.MsgErrInvalidMessage.Error(),
+					},
+				}.WithTag(msg.Header.Tag))
+				continue
+			}
 			logger.Daemon.Printf("Error receiving packets: %v", err)
 			return
 		}
-		err = HandleTCPMessage(conn, msg, p, srv)
+		err = HandleTCPMessage(conn, msg, s, srv)
 		if err != nil {
 			logger.Daemon.Printf("Error managing the message: %v", err)
-			return
 		}
 	}
 }
@@ -77,8 +88,6 @@ func HandleTCPMessage(
 		return nil
 
 	case protocol.Error:
-		// An untagged error answers nothing in particular, so the session
-		// state is unknown and the connection is dropped.
 		if tag == 0 {
 			return fmt.Errorf(
 				"peer %v error %d: %s",
@@ -107,7 +116,7 @@ func HandleTCPMessage(
 			frame = protocol.Frame{
 				Body: protocol.Error{
 					Code:    protocol.ErrUnknownTag,
-					Message: protocol.MsgErrUnknownTag,
+					Message: protocol.MsgErrUnknownTag.Error(),
 				},
 			}.WithTag(tag)
 		}
@@ -121,7 +130,7 @@ func HandleTCPMessage(
 		SendFrame(s, protocol.Frame{
 			Body: protocol.Error{
 				Code:    protocol.ErrInvalidState,
-				Message: protocol.MsgErrInvalidState,
+				Message: protocol.MsgErrInvalidState.Error(),
 			},
 		}.WithTag(msg.Header.Tag))
 		return fmt.Errorf(
@@ -134,9 +143,9 @@ func HandleTCPMessage(
 		SendFrame(s, protocol.Frame{
 			Body: protocol.Error{
 				Code:    protocol.ErrInvalidMessage,
-				Message: protocol.MsgErrInvalidMessage,
+				Message: protocol.MsgErrInvalidMessage.Error(),
 			},
-		})
+		}.WithTag(msg.Header.Tag))
 		return fmt.Errorf("unknown message type from peer %v", s.Remote.ID)
 	}
 }
@@ -151,13 +160,13 @@ func submitRequest(
 	if err != nil {
 		reply := protocol.Error{
 			Code:    protocol.ErrInternal,
-			Message: protocol.MsgErrInternal,
+			Message: protocol.MsgErrInternal.Error(),
 		}
 		if errors.Is(err, sched.ErrRequestsQueueFull) ||
 			errors.Is(err, sched.ErrOverloaded) {
 			reply = protocol.Error{
 				Code:    protocol.ErrOverloaded,
-				Message: protocol.MsgErrOverloaded,
+				Message: protocol.MsgErrOverloaded.Error(),
 			}
 		}
 		_ = SendFrame(s, protocol.Frame{Body: reply}.WithTag(tag))

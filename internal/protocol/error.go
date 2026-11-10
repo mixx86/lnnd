@@ -3,11 +3,12 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 const (
 	ErrorMessagePayloadSize = 43
-	ErrorMessageSize        = 35 // zero-padded on the wire
+	ErrorMessageSize        = 35
 	CodeErrorMessageSize    = 8
 )
 
@@ -32,7 +33,10 @@ func (e Error) Encode() []byte {
 
 func ParseError(payload []byte) (Error, error) {
 	if len(payload) != ErrorMessagePayloadSize {
-		return Error{}, errors.New("invalid payload size")
+		return Error{}, fmt.Errorf(
+			"%w: invalid payload size",
+			MsgErrInvalidMessage,
+		)
 	}
 	code := int64(binary.BigEndian.Uint64(payload[:CodeErrorMessageSize]))
 	raw := payload[CodeErrorMessageSize:]
@@ -48,22 +52,23 @@ func (Error) Type() MsgType { return MsgError }
 func (Error) Size() uint32  { return ErrorMessagePayloadSize }
 
 const (
-	ErrInvalidMessage  int64 = -1
-	ErrInvalidState    int64 = -2
-	ErrRequestRejected int64 = -3
-	ErrOverloaded      int64 = -4
-	ErrTooManyPending  int64 = -5
-	ErrPendingTimeout  int64 = -6
-	ErrInternal        int64 = -7
-	ErrUnknownTag      int64 = -8
+	ErrInvalidMessage int64 = -(iota + 1)
+	ErrInvalidState
+	ErrRequestRejected
+	ErrOverloaded
+	ErrTooManyPending
+	ErrPendingTimeout
+	ErrInternal
+	ErrUnknownTag
+	ErrParsingMessage
 )
 
-const (
-	MsgErrInvalidMessage  = "Invalid message."
-	MsgErrInvalidState    = "Invalid state."
-	MsgErrRequestRejected = "Request rejected."
-	MsgErrOverloaded      = "Daemon overloaded."
-	MsgErrPendingTimeout  = "Timed out waiting for a response."
-	MsgErrInternal        = "Internal error."
-	MsgErrUnknownTag      = "Unknown tag."
+var (
+	MsgErrInvalidMessage  = errors.New("invalid message")
+	MsgErrInvalidState    = errors.New("invalid state")
+	MsgErrRequestRejected = errors.New("request rejected")
+	MsgErrOverloaded      = errors.New("daemon overloaded")
+	MsgErrPendingTimeout  = errors.New("timed out waiting for a response")
+	MsgErrInternal        = errors.New("internal error")
+	MsgErrUnknownTag      = errors.New("unknown tag")
 )

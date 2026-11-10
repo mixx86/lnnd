@@ -36,12 +36,12 @@ func ReadFrame(r io.Reader) (protocol.Frame, error) {
 
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return protocol.Frame{}, err
+		return protocol.Frame{Header: header}, err
 	}
 
 	body, err := protocol.ParsePayload(header.Type, payload)
 	if err != nil {
-		return protocol.Frame{}, err
+		return protocol.Frame{Header: header}, err
 	}
 
 	return protocol.Frame{

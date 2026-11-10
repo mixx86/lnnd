@@ -49,7 +49,7 @@ func PayloadLength(h Header) (uint32, error) {
 }
 
 // ParsePayload lives here rather than next to ReadFrame so that anything
-// that stores encoded payloads (the outbox) can decode them without
+// that stores encoded payloads (e.g. outbox) can decode them without
 // depending on the network package.
 func ParsePayload(t MsgType, payload []byte) (Payload, error) {
 	switch t {
@@ -68,6 +68,10 @@ func ParsePayload(t MsgType, payload []byte) (Payload, error) {
 	case MsgSymlinkRequest:
 		return ParseSymlinkRequest(payload)
 	default:
-		return nil, fmt.Errorf("unknown message type: %d", t)
+		return nil, fmt.Errorf(
+			"%w of type %v",
+			MsgErrInvalidMessage,
+			t,
+		)
 	}
 }

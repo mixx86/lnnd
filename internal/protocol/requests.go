@@ -2,12 +2,11 @@ package protocol
 
 import (
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"path/filepath"
 )
 
-// Dst is optional: if empty, the receiver decides the local path on --accept.
-// If Dst is set, the receiver cannot change it — only accept or reject.
+// Dst is optional: if empty, the receiver decides the local path.
 type SymlinkRequest struct {
 	Src string
 	Dst string
@@ -59,12 +58,18 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	lenSrc := binary.BigEndian.Uint16(payload[:2])
 
 	if len(payload) < int(2+lenSrc) {
-		return SymlinkRequest{}, errors.New("payload too short for src")
+		return SymlinkRequest{}, fmt.Errorf(
+			"%w: payload too short for src",
+			MsgErrInvalidMessage,
+		)
 	}
 
 	// 4096: matches Linux PATH_MAX; also caps memory from malformed payloads.
 	if lenSrc > 4096 {
-		return SymlinkRequest{}, errors.New("path too long for src")
+		return SymlinkRequest{}, fmt.Errorf(
+			"%w: path too long for src",
+			MsgErrInvalidMessage,
+		)
 	}
 	srcStart := 2
 	srcEnd := srcStart + int(lenSrc)
@@ -73,11 +78,12 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	remaining := len(payload) - srcEnd
 	switch {
 	case remaining == 0:
-		// dst omitted — receiver decides the path on --accept.
+		// dst omitted
 
 	case remaining <= 2:
-		return SymlinkRequest{}, errors.New(
-			"incongruent data: dst_len present but dst missing",
+		return SymlinkRequest{}, fmt.Errorf(
+			"%w: incongruent data: dst_len present but dst missing",
+			MsgErrInvalidMessage,
 		)
 
 	default:
@@ -87,7 +93,10 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 		dstEnd := dstStart + int(lenDst)
 
 		if len(payload) < dstEnd {
-			return SymlinkRequest{}, errors.New("payload too short for dst")
+			return SymlinkRequest{}, fmt.Errorf(
+				"%w: payload too short for dst",
+				MsgErrInvalidMessage,
+			)
 		}
 
 		Dst = payload[dstStart:dstEnd]
@@ -100,8 +109,9 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	}
 
 	if !filepath.IsAbs(srcStr) {
-		return SymlinkRequest{}, errors.New(
-			"relative paths not allowed for src",
+		return SymlinkRequest{}, fmt.Errorf(
+			"%w: relative paths not allowed for src",
+			MsgErrInvalidMessage,
 		)
 	}
 
@@ -109,8 +119,9 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	cleanDst := ""
 	if dstStr != "" {
 		if !filepath.IsAbs(dstStr) {
-			return SymlinkRequest{}, errors.New(
-				"relative paths not allowed for dst",
+			return SymlinkRequest{}, fmt.Errorf(
+				"%w: relative paths not allowed for dst",
+				MsgErrInvalidMessage,
 			)
 		}
 		cleanDst = filepath.Clean(dstStr)
@@ -130,8 +141,6 @@ const (
 	ResolutionPayloadSize = resolutionReqIDLen + resolutionAcceptedLen
 )
 
-// Resolution carries no tag of its own: like every reply, it travels in
-// the frame header.
 type Resolution struct {
 	LCLReqID uint32
 	RMTReqID uint32

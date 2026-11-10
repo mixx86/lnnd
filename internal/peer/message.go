@@ -41,7 +41,7 @@ func (s *SelfNode) CancelPendingMessage(tag uint32) {
 	if ok {
 		ch <- protocol.Error{
 			Code:    protocol.ErrPendingTimeout,
-			Message: protocol.MsgErrPendingTimeout,
+			Message: protocol.MsgErrPendingTimeout.Error(),
 		}
 	}
 }
