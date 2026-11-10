@@ -60,7 +60,6 @@ const (
 	ErrPendingTimeout
 	ErrInternal
 	ErrUnknownTag
-	ErrParsingMessage
 )
 
 var (

@@ -57,7 +57,7 @@ func serveSession(conn net.Conn, s *peer.Session, srv *Server) {
 				logger.Protocol.Printf("Invalid message: %v", err)
 				SendFrame(s, protocol.Frame{
 					Body: protocol.Error{
-						Code:    protocol.ErrParsingMessage,
+						Code:    protocol.ErrInvalidMessage,
 						Message: protocol.MsgErrInvalidMessage.Error(),
 					},
 				}.WithTag(msg.Header.Tag))
