@@ -8,15 +8,15 @@ const maxPending = 65536
 // one: tags must survive reconnects, and a session does not.
 func (s *SelfNode) RegisterPendingMessage(
 	tag uint32,
-) (<-chan protocol.Payload, int64) {
+) (<-chan protocol.Payload, error) {
 	s.PendingMu.Lock()
 	defer s.PendingMu.Unlock()
 	if len(s.Pending) >= maxPending {
-		return nil, protocol.ErrTooManyPending
+		return nil, protocol.MsgErrTooManyPending
 	}
 	ch := make(chan protocol.Payload, 1)
 	s.Pending[tag] = ch
-	return ch, 0
+	return ch, nil
 }
 
 func (s *SelfNode) ResolveMessage(tag uint32, msg protocol.Payload) {

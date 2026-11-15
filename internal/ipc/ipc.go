@@ -16,6 +16,10 @@ func Send(conn net.Conn, res Response) (int, error) {
 	return conn.Write(bytes)
 }
 
+func SendErr(conn net.Conn, err error) {
+	Send(conn, Response{OK: false, Err: err.Error()})
+}
+
 func Listen(s app.Services, srv *network.Server) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {

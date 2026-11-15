@@ -48,8 +48,9 @@ func ParseError(payload []byte) (Error, error) {
 	return Error{Code: code, Message: string(raw[:n])}, nil
 }
 
-func (Error) Type() MsgType { return MsgError }
-func (Error) Size() uint32  { return ErrorMessagePayloadSize }
+func (Error) Type() MsgType   { return MsgError }
+func (Error) Size() uint32    { return ErrorMessagePayloadSize }
+func (e Error) Error() string { return e.Message }
 
 const (
 	ErrInvalidMessage int64 = -(iota + 1)
@@ -67,6 +68,7 @@ var (
 	MsgErrInvalidState    = errors.New("invalid state")
 	MsgErrRequestRejected = errors.New("request rejected")
 	MsgErrOverloaded      = errors.New("daemon overloaded")
+	MsgErrTooManyPending  = errors.New("too many pending")
 	MsgErrPendingTimeout  = errors.New("timed out waiting for a response")
 	MsgErrInternal        = errors.New("internal error")
 	MsgErrUnknownTag      = errors.New("unknown tag")

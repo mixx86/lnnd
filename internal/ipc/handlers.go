@@ -11,6 +11,7 @@ import (
 	"net"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -87,56 +88,31 @@ func HandleRequest(
 
 		switch req.Type {
 		case "symreq":
-			session, exists := s.Session.Get(id)
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+			defer cancel()
 
-			if exists {
-				frame := s.Outbox.Put(
-					session.Remote.ID,
-					protocol.SymlinkRequest{
-						Src: req.Src,
-						Dst: req.Dst,
-					},
-				)
-				if err := network.SendFrame(session, frame); err != nil {
-					Send(unixConn, Response{
-						OK:  false,
-						Err: err.Error(),
-					})
-					return
-				}
-				Send(unixConn, Response{
-					OK:  true,
-					Err: "",
-				})
-				return
-			}
-
-			session, err = srv.Connect(context.Background(), req.IP)
+			sess, err := srv.SessionFor(ctx, id, req.IP)
 			if err != nil {
-				Send(unixConn, Response{
-					OK:  false,
-					Err: err.Error(),
-				})
+				SendErr(unixConn, err)
 				return
 			}
-
-			frame := s.Outbox.Put(session.Remote.ID, protocol.SymlinkRequest{
+			reply, err := srv.RoundTrip(ctx, sess, protocol.SymlinkRequest{
 				Src: req.Src,
 				Dst: req.Dst,
 			})
 
-			if err := network.SendFrame(session, frame); err != nil {
-				Send(unixConn, Response{
-					OK:  false,
-					Err: err.Error(),
-				})
+			if err != nil {
+				SendErr(unixConn, err)
 				return
 			}
-
-			Send(unixConn, Response{
-				OK:  true,
-				Err: "",
-			})
+			if e, ok := reply.(protocol.Error); ok {
+				SendErr(unixConn, e)
+				return
+			}
+			Send(unixConn, Response{OK: true})
 
 			return
 		case "hard":
