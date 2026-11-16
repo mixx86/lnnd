@@ -62,6 +62,7 @@ func HandleConn(conn net.Conn, s app.Services, srv *network.Server) {
 	req, err := ParseRequest(data)
 	if err != nil {
 		log.Printf("Error deserializing json data: %v", err)
+		SendErr(conn, err)
 		return
 	}
 	HandleRequest(&req, conn, s, srv)
