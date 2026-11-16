@@ -37,7 +37,10 @@ func (s *Server) RoundTrip(
 	}
 
 	select {
-	case reply := <-ch:
+	case reply, ok := <-ch:
+		if !ok {
+			return nil, ErrSessionClosed
+		}
 		return reply, nil
 	case <-ctx.Done():
 		sess.Self.CancelPendingMessage(tag)

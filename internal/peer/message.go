@@ -31,6 +31,16 @@ func (s *SelfNode) ResolveMessage(tag uint32, msg protocol.Payload) {
 	}
 }
 
+func (s *SelfNode) AbortPendingMessages() {
+	s.PendingMu.Lock()
+	pending := s.Pending
+	s.Pending = make(map[uint32]chan protocol.Payload)
+	s.PendingMu.Unlock()
+	for _, ch := range pending {
+		close(ch)
+	}
+}
+
 func (s *SelfNode) CancelPendingMessage(tag uint32) {
 	s.PendingMu.Lock()
 	ch, ok := s.Pending[tag]

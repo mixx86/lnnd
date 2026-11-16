@@ -79,12 +79,14 @@ func (s *Server) Connect(
 		return nil, err
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
+		shutdownSession(s, p)
 		conn.Close()
 		return nil, err
 	}
 
 	go func() {
 		serveSession(conn, p, s)
+		shutdownSession(s, p)
 		if err := conn.Close(); err != nil {
 			logger.Daemon.Printf(
 				"Error closing connection %s: %v",

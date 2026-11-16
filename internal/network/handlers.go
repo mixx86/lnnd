@@ -35,12 +35,19 @@ func HandleConn(conn net.Conn, srv *Server) {
 		logger.Daemon.Printf("Error during the handshake: %v", err)
 		return
 	}
+	defer shutdownSession(srv, p)
 	if err = conn.SetDeadline(time.Time{}); err != nil {
 		logger.Daemon.Printf("Error clearing deadline in %s", conn.RemoteAddr())
 		return
 	}
 
 	serveSession(conn, p, srv)
+}
+
+func shutdownSession(srv *Server,s *peer.Session) {
+	srv.Sessions.Unregister(s)
+	s.SetState(peer.StateClosing)
+	s.Self.AbortPendingMessages()
 }
 
 // WARNING: This function assumes that handshake has been

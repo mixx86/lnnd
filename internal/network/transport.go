@@ -2,10 +2,13 @@ package network
 
 import (
 	"context"
+	"errors"
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
 	"net"
 )
+
+var ErrSessionClosed = errors.New("session closed")
 
 type Transport interface {
 	Listen() (net.Listener, error)
@@ -16,6 +19,9 @@ func SendFrame(
 	s *peer.Session,
 	frame protocol.Frame,
 ) error {
+	if s.GetState() == peer.StateClosing {
+		  return ErrSessionClosed
+  	}
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 

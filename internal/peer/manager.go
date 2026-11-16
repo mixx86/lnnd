@@ -30,3 +30,11 @@ func (sm *SessionManager) Remove(id uuid.UUID) {
 	defer sm.mu.Unlock()
 	delete(sm.sessions, id)
 }
+
+func (sm *SessionManager) Unregister(s *Session) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if sm.sessions[s.Remote.ID] == s {
+		delete(sm.sessions, s.Remote.ID)
+	}
+}

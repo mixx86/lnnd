@@ -26,10 +26,11 @@ func NewSession(
 	pubKey ed25519.PublicKey,
 	conn net.Conn,
 ) *Session {
-	return &Session{
+	s := &Session{
 		Remote: NewRemoteNode(id, pubKey),
 		Self:   NewSelfNode(),
 		Conn:   conn,
-		State:  StateNew,
 	}
+	s.SetState(StateVerified)
+	return s
 }

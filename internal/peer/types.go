@@ -5,19 +5,21 @@ import (
 	"lnn/internal/protocol"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type State int
+type State uint
 
 const (
-	StateNew       State = iota
-	StateHandshake       // only handshake messages are valid
-	StateVerified        // application messages are allowed
-	StateClosing         // no new messages may be sent
+	  StateVerified State = iota
+	  StateClosing
 )
+
+func (s *Session) GetState() State     { return State(s.State.Load()) }
+func (s *Session) SetState(st State) { s.State.Store(uint32(st)) }
 
 type LinkType uint8
 
@@ -52,7 +54,7 @@ type Session struct {
 	// Mu guards writes to Conn: the TCP read goroutine and the IPC handler
 	// goroutine may write concurrently.
 	Mu    sync.Mutex
-	State State
+	State atomic.Uint32
 }
 
 type SessionManager struct {
