@@ -88,4 +88,6 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 
 ## License
 
-[AGPLv3](LICENSE)
+Copyright (C) 2026 Gabriel Quintáns Souto
+
+Released under the [AGPLv3](LICENSE).
