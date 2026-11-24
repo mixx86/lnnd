@@ -34,7 +34,7 @@ Link fields:
 
 | Field | Meaning |
 |-------|---------|
-| `src` | Path on the peer, required. It is cleaned and made absolute; a relative path is taken from `/`. |
+| `src` | Path of the file on this machine, the sender's, required. It is cleaned and made absolute; a relative path is taken from `/`. |
 | `dst` | Destination path on the peer's machine (optional). The peer rejects a relative `dst`, which the client sees as `ErrPeer`. |
 
 ```json
