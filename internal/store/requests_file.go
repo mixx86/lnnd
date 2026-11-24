@@ -20,7 +20,7 @@ import (
 //
 // Request (op=0):
 // [req_type:2][peer_uuid:16][req_id:4][wip: rmt_req_id:4][unix_ts:8]
-// [src_len:2][src:src_len][dst_len:2][dst:dst_len]
+// [payload]: the request's wire payload as is; req_type says how to decode it
 //
 // Accepted (op=1):
 // [req_id:4]

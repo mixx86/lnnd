@@ -196,7 +196,7 @@ Every entry starts with `[entry_length:4][op:1]`:
 
 | Op | Name          | Payload                                                                         |
 |----|---------------|---------------------------------------------------------------------------------|
-| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][req_id:4][unix_ts:8][src_len:2][src][dst_len:2][dst]` (`dst` part only if set) |
+| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][req_id:4][unix_ts:8][payload]` — the request's wire payload as is, decoded according to `req_type` (for example, the [`SYMLINK_REQUEST` payload](protocol.md#message-types)) |
 | 1  | `ACCEPTED`    | `[req_id:4]`                                                                    |
 | 2  | `REJECTED`    | `[req_id:4]`                                                                    |
 | 3  | `CHECKPOINT`  | `[checksum:4]` — byte-sum of all entries since the previous checkpoint          |
