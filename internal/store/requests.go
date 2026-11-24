@@ -24,6 +24,7 @@ const (
 	opAccepted
 	opRejected
 	opCheckpoint
+	opSentRequest
 )
 
 const (

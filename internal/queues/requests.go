@@ -38,28 +38,31 @@ func (q *RequestsQueue) Config() *QueueConfig {
 }
 
 func (q *RequestsQueue) makePending(
-	from *peer.RemoteNode,
+	remote *peer.RemoteNode,
 	req protocol.InboundRequest,
 	tag uint32,
+	sent bool,
 ) PendingRequest {
 	// Written is buffered for the writer's single result: SubmitRequest
 	// stops listening after writeConfirmTimeout, and an unbuffered send
 	// would then block the writer, and every request after it, forever.
 	return PendingRequest{
-		From:       from,
+		Peer:       remote,
 		Req:        req,
-		Written:    make(chan error, 1),
+		Written:    make(chan WriteResult, 1),
 		EnqueuedAt: uint64(time.Now().Unix()),
 		Tag:        tag,
+		Sent:       sent,
 	}
 }
 
 func (q *RequestsQueue) TryEnqueue(
-	from *peer.RemoteNode,
+	remote *peer.RemoteNode,
 	req protocol.InboundRequest,
 	tag uint32,
+	sent bool,
 ) (PendingRequest, bool) {
-	pr := q.makePending(from, req, tag)
+	pr := q.makePending(remote, req, tag, sent)
 	select {
 	case q.queue <- pr:
 		return pr, true
@@ -69,12 +72,13 @@ func (q *RequestsQueue) TryEnqueue(
 }
 
 func (q *RequestsQueue) TryEnqueueWithTimeout(
-	from *peer.RemoteNode,
+	remote *peer.RemoteNode,
 	req protocol.InboundRequest,
 	tag uint32,
+	sent bool,
 	timeout time.Duration,
 ) (PendingRequest, bool) {
-	pr := q.makePending(from, req, tag)
+	pr := q.makePending(remote, req, tag, sent)
 	select {
 	case q.queue <- pr:
 		pr.EnqueuedAt = uint64(time.Now().Unix())

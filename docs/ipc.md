@@ -41,7 +41,7 @@ Link fields:
 { "type": "request", "op": "send", "kind": "symlink", "ip": "192.168.1.34", "src": "/path/to/file", "dst": "/home/me/link" }
 ```
 
-To send, the daemon reuses the session of the peer named by `uuid` if one is open, and otherwise dials `ip` and runs the outbound handshake. It puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox), sends it and waits for the peer's answer; the whole exchange with the peer, dialing included, has 5 s. Code `0` means the peer answered `OK`: it stored the request durably and the request is pending, not accepted (see [the inbound request lifecycle](architecture.md#inbound-request-lifecycle)).
+To send, the daemon reuses the session of the peer named by `uuid` if one is open, and otherwise dials `ip` and runs the outbound handshake. It then logs the request in the [requests WAL](architecture.md#requests-wal-requests) and waits until it is durable, puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox), sends it and waits for the peer's answer; dialing and the exchange with the peer have 5 s together, which the logging also counts against. Code `0` means the peer answered `OK`: it stored the request durably and the request is pending, not accepted (see [the inbound request lifecycle](architecture.md#inbound-request-lifecycle)).
 
 ## Response
 
@@ -63,5 +63,5 @@ To send, the daemon reuses the session of the peer named by `uuid` if one is ope
 | `6`  | `ErrPeerUnreachable` | There is no session with the peer and none could be opened. Nothing was sent. |
 | `7`  | `ErrNoReply`         | Sending failed or the peer did not answer in time. Whether the peer stored the request is unknown. |
 | `8`  | `ErrPeer`            | The peer answered `ERROR`; `err` carries the peer's message. |
-| `9`  | `ErrInternal`        | Reserved; not sent today. |
+| `9`  | `ErrInternal`        | The request could not be logged before sending, for example because the daemon is overloaded. Nothing was sent. |
 | `10` | `ErrTimeout`         | The message could not be read, usually because the client did not half-close within 2 s. |

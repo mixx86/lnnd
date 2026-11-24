@@ -11,6 +11,7 @@ import (
 
 	"lnn/internal/peer"
 	"lnn/internal/protocol"
+	"lnn/internal/queues"
 )
 
 // testRequest is sized so that a single queued request reaches the byte
@@ -66,7 +67,7 @@ func writeQueued(t *testing.T, s *Service) uint32 {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr.Written <- nil
+	pr.Written <- queues.WriteResult{}
 	return pr.Tag
 }
 

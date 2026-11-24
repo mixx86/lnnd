@@ -154,10 +154,16 @@ func HandleLinkRequest(
 			SendErr(conn, ErrPeerUnreachable, err)
 			return
 		}
-		reply, err := srv.RoundTrip(ctx, sess, protocol.SymlinkRequest{
-			Src: req.Src,
-			Dst: req.Dst,
-		})
+		link := protocol.SymlinkRequest{Src: req.Src, Dst: req.Dst}
+		// Logged before it is sent: once the peer may hold the request,
+		// we must hold its record too.
+		_, err = srv.Scheduler.SubmitSentRequest(sess.Remote, link)
+		if err != nil {
+			log.Printf("Error logging sent request: %v", err)
+			SendErr(conn, ErrInternal, err)
+			return
+		}
+		reply, err := srv.RoundTrip(ctx, sess, link)
 
 		if err != nil {
 			SendErr(conn, ErrNoReply, err)

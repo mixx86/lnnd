@@ -13,32 +13,54 @@ func (s *Service) SubmitRequest(
 	req protocol.InboundRequest,
 	tag uint32,
 ) error {
+	_, err := s.submitRequest(from, req, tag, false)
+	return err
+}
+
+func (s *Service) SubmitSentRequest(
+	to *peer.RemoteNode,
+	req protocol.InboundRequest,
+) (uint32, error) {
+	return s.submitRequest(to, req, 0, true)
+}
+
+func (s *Service) submitRequest(
+	remote *peer.RemoteNode,
+	req protocol.InboundRequest,
+	tag uint32,
+	sent bool,
+) (uint32, error) {
 	q, ok := s.queues[queues.RequestsQueueID].(*queues.RequestsQueue)
 	if !ok {
-		return errors.New("error asserting the requests queue")
+		return 0, errors.New("error asserting the requests queue")
 	}
 
 	if !s.WaitForPressureReleaseWithTimeout(RequestsID, pressureWaitTimeout) {
-		return ErrOverloaded
+		return 0, ErrOverloaded
 	}
 
-	pr, ok := q.TryEnqueueWithTimeout(from, req, tag, requestEnqueueTimeout)
+	pr, ok := q.TryEnqueueWithTimeout(
+		remote,
+		req,
+		tag,
+		sent,
+		requestEnqueueTimeout,
+	)
 	if !ok {
-		return ErrRequestsQueueFull
+		return 0, ErrRequestsQueueFull
 	}
 
 	s.UpdateQueuePressure(queues.RequestsQueueID, int64(pr.Req.Size()))
 
 	select {
-	case err := <-pr.Written:
-		if err != nil {
-			return err
+	case res := <-pr.Written:
+		if res.Err != nil {
+			return 0, res.Err
 		}
+		return res.ReqID, nil
 	case <-time.After(writeConfirmTimeout):
-		return ErrWriteTimeout
+		return 0, ErrWriteTimeout
 	}
-
-	return nil
 }
 
 func (s *Service) NextRequest() (queues.PendingRequest, error) {

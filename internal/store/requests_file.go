@@ -30,6 +30,8 @@ import (
 //
 // Checkpoint (op=3):
 // [checksum:4]
+//
+// Sent request (op=4): same fields as Request, rmt_req_id 0.
 
 /*
  * `rmt_req_id` should only be used to inform the peer whether a request was

@@ -46,12 +46,17 @@ func (w *RequestsWriter) persistRequests(
 	 * WriterConfig in sched.
 	 */
 	go func() {
-		lastIdx := len(batch) - 1
-		var flush bool
+		lastIdx := -1
 		for idx, pr := range batch {
-			if idx == lastIdx {
-				flush = true
+			if !pr.Sent {
+				lastIdx = idx
 			}
+		}
+		for idx, pr := range batch {
+			if pr.Sent {
+				continue
+			}
+			flush := idx == lastIdx
 			if err := w.reqCache.Put(reqIDs[idx], pr.Tag, flush); err != nil {
 				return
 			}
@@ -78,7 +83,7 @@ func (w *RequestsWriter) persistRequests(
 		opRequest,
 	)
 	if err != nil {
-		notifyWriteResult(batch, err)
+		notifyWriteResult(batch, reqIDs, err)
 		return err
 	}
 
@@ -97,12 +102,12 @@ func (w *RequestsWriter) persistRequests(
 			logger.Daemon.Printf("rolling back failed batch: %v", rerr)
 		}
 		s.ReleaseWriteTurn(wturn, 0)
-		notifyWriteResult(batch, err)
+		notifyWriteResult(batch, reqIDs, err)
 		return err
 	}
 	s.ReleaseWriteTurn(wturn, written)
 
-	notifyWriteResult(batch, nil)
+	notifyWriteResult(batch, reqIDs, nil)
 	return nil
 }
 
@@ -159,6 +164,10 @@ func (r *RequestsFile) writeBatch(
 ) error {
 	for idx, pr := range batch {
 		var fields []byte
+		entryOp := op
+		if op == opRequest && pr.Sent {
+			entryOp = opSentRequest
+		}
 
 		switch op {
 		case opRequest:
@@ -174,7 +183,7 @@ func (r *RequestsFile) writeBatch(
 			)
 			offset += requestTypeLen
 
-			copy(req[offset:offset+requestPeerUUIDLen], pr.From.ID[:])
+			copy(req[offset:offset+requestPeerUUIDLen], pr.Peer.ID[:])
 			offset += requestPeerUUIDLen
 
 			binary.BigEndian.PutUint32(
@@ -213,7 +222,7 @@ func (r *RequestsFile) writeBatch(
 		}
 
 		entryLength := uint32(entryHeaderLen + len(fields))
-		header := encodeEntryHeader(op, entryLength)
+		header := encodeEntryHeader(entryOp, entryLength)
 
 		req := make([]byte, 0, entryLength)
 		req = append(req, header[:]...)
@@ -317,8 +326,16 @@ func (r *RequestsFile) checkpoint(
 	return lco, nil
 }
 
-func notifyWriteResult(batch []queues.PendingRequest, err error) {
-	for _, pr := range batch {
-		pr.Written <- err
+func notifyWriteResult(
+	batch []queues.PendingRequest,
+	reqIDs []uint32,
+	err error,
+) {
+	for idx, pr := range batch {
+		res := queues.WriteResult{Err: err}
+		if err == nil {
+			res.ReqID = reqIDs[idx]
+		}
+		pr.Written <- res
 	}
 }

@@ -307,7 +307,7 @@ func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
 				t.Fatal("recovery settled before the resend was durable")
 			}
 
-			queued.Written <- c.writeErr
+			queued.Written <- queues.WriteResult{Err: c.writeErr}
 
 			select {
 			case reply := <-replies:

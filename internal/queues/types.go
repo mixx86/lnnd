@@ -20,13 +20,22 @@ const (
 // not be retained — the on-disk file is the sole source of truth for pending
 // requests.
 type PendingRequest struct {
-	From       *peer.RemoteNode
+	Peer       *peer.RemoteNode
 	Req        protocol.InboundRequest
-	Written    chan error
+	Written    chan WriteResult
 	EnqueuedAt uint64
 	Tag        uint32
 	// The peer's id for the request, 0 when the request is ours.
 	RMTReqID uint32
+	// Sent marks a request of ours, logged before it goes to the peer.
+	Sent bool
+}
+
+// WriteResult carries the req_id the writer assigned: a request of ours
+// needs it before it goes to the peer.
+type WriteResult struct {
+	ReqID uint32
+	Err   error
 }
 
 type RequestsQueue struct {

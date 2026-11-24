@@ -350,7 +350,7 @@ func (r *RequestsFile) readEntry(
 	op := opKind(entry[entryLengthLen])
 
 	switch op {
-	case opRequest, opAccepted, opRejected, opCheckpoint:
+	case opRequest, opAccepted, opRejected, opCheckpoint, opSentRequest:
 	default:
 		return nil, entryLength, op, fmt.Errorf(
 			"%w at offset %d: operation %d",

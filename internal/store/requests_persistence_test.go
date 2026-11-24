@@ -101,6 +101,7 @@ func TestWriterNotBlockedByAbandonedSubmitter(t *testing.T) {
 		peer.NewRemoteNode(uuid.New(), nil),
 		protocol.SymlinkRequest{Src: "/a"},
 		1,
+		false,
 		time.Second,
 	)
 	if !ok {
