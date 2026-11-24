@@ -89,6 +89,57 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 	}
 }
 
+// A request of ours shares the log with the ones peers send: it must get
+// its own req_id, and the startup repair must not take its entry for a
+// corrupt one and cut it off.
+func TestSentRequestSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "requests")
+
+	s := runningScheduler()
+	w := &Writers{RequestsWriter: *NewRequestsWriter(dir, openPending(t, dir))}
+	go w.Run(s)
+
+	remote := peer.NewRemoteNode(uuid.New(), nil)
+	if err := s.SubmitRequest(
+		remote,
+		protocol.SymlinkRequest{Src: "/srv/received"},
+		1,
+	); err != nil {
+		t.Fatal(err)
+	}
+	sent := protocol.SymlinkRequest{Src: "/srv/sent", Dst: "/home/peer/l"}
+	reqID, err := s.SubmitSentRequest(remote, sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reqID != 2 {
+		t.Fatalf("sent request got req_id %d, want 2", reqID)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(before, sent.Encode()) {
+		t.Fatal("sent request is not in the WAL")
+	}
+
+	pending := openPending(t, dir)
+	if err := NewRequestsWriter(dir, pending).repairOnStartup(); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("startup repair rewrote a WAL holding a sent request: "+
+			"%d bytes before, %d after", len(before), len(after))
+	}
+}
+
 func TestWriterNotBlockedByAbandonedSubmitter(t *testing.T) {
 	dir := t.TempDir()
 	w := NewRequestsWriter(dir, openPending(t, dir))

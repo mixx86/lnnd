@@ -193,59 +193,81 @@ func TestRequestsFileRecoveryTruncatesGarbageAfterCheckpoint(t *testing.T) {
 	assertWALState(t, path, uint64(layout.cp2), layout.eof)
 }
 
-func TestTornTailRequestIsRecordedForRecovery(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "requests")
-	layout := writeTestWAL(t, path)
+// A request cut short at the tail is owed by the peer only if the peer sent
+// it: asking a peer to resend one of ours would name a tag of our outbox.
+func TestTornTailRequestRecovery(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       opKind
+		wantOwed bool
+	}{
+		{name: "received request is owed", op: opRequest, wantOwed: true},
+		{name: "sent request is not", op: opSentRequest, wantOwed: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "requests")
+			layout := writeTestWAL(t, path)
 
-	peer := uuid.New()
-	const reqID, tag = 7, 42
+			peer := uuid.New()
+			const reqID, tag = 7, 42
 
-	cache, err := OpenRequestsCache(filepath.Join(dir, "requests.cache"), 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cache.Put(reqID, tag, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := cache.Close(); err != nil {
-		t.Fatal(err)
-	}
+			cache, err := OpenRequestsCache(
+				filepath.Join(dir, "requests.cache"),
+				2,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cache.Put(reqID, tag, true); err != nil {
+				t.Fatal(err)
+			}
+			if err := cache.Close(); err != nil {
+				t.Fatal(err)
+			}
 
-	// A request whose header promises more bytes than reached the disk,
-	// but whose peer_uuid and req_id survived.
-	fields := make([]byte, requestStaticFieldsLen+16)
-	copy(fields[requestTypeLen:], peer[:])
-	binary.BigEndian.PutUint32(
-		fields[requestTypeLen+requestPeerUUIDLen:],
-		reqID,
-	)
-	torn := testEntry(opRequest, fields)[:requestRecoveryMinLen+4]
+			// A request whose header promises more bytes than reached the
+			// disk, but whose peer_uuid and req_id survived.
+			fields := make([]byte, requestStaticFieldsLen+16)
+			copy(fields[requestTypeLen:], peer[:])
+			binary.BigEndian.PutUint32(
+				fields[requestTypeLen+requestPeerUUIDLen:],
+				reqID,
+			)
+			torn := testEntry(tt.op, fields)[:requestRecoveryMinLen+4]
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.Write(torn); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.Write(torn); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
 
-	pending, err := recovery.Open(filepath.Join(dir, "requests.recovery"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := NewRequestsWriter(dir, pending)
-	if err := w.repairOnStartup(); err != nil {
-		t.Fatal(err)
-	}
+			pending, err := recovery.Open(
+				filepath.Join(dir, "requests.recovery"),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := NewRequestsWriter(dir, pending)
+			if err := w.repairOnStartup(); err != nil {
+				t.Fatal(err)
+			}
 
-	got := pending.ForPeer(peer)
-	want := recovery.Entry{Peer: peer, ReqID: reqID, Tag: tag}
-	if len(got) != 1 || got[0] != want {
-		t.Fatalf("pending recoveries: got %+v, want [%+v]", got, want)
+			got := pending.ForPeer(peer)
+			var want []recovery.Entry
+			if tt.wantOwed {
+				want = []recovery.Entry{{Peer: peer, ReqID: reqID, Tag: tag}}
+			}
+			if len(got) != len(want) || (len(want) == 1 && got[0] != want[0]) {
+				t.Fatalf("pending recoveries: got %+v, want %+v", got, want)
+			}
+			assertWALState(t, path, uint64(layout.cp2), layout.eof)
+		})
 	}
-	assertWALState(t, path, uint64(layout.cp2), layout.eof)
 }
