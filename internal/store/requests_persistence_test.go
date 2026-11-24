@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -89,9 +91,41 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 	}
 }
 
-// A request of ours shares the log with the ones peers send: it must get
-// its own req_id, and the startup repair must not take its entry for a
-// corrupt one and cut it off.
+type walRequest struct {
+	reqID    uint32
+	rmtReqID uint32
+	payload  []byte
+}
+
+// requestEntries decodes the request entries of a WAL by the layout in
+// docs/architecture.md, not by the writer's code: header (16 B), then
+// [entry_length:4][op:1] and, for requests,
+// [req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8][payload].
+func requestEntries(t *testing.T, wal []byte) []walRequest {
+	t.Helper()
+	var entries []walRequest
+	for off := 16; off < len(wal); {
+		n := int(binary.BigEndian.Uint32(wal[off:]))
+		if n < 5 || off+n > len(wal) {
+			t.Fatalf("entry at offset %d has length %d", off, n)
+		}
+		if opKind(wal[off+4]) == opRequest {
+			fields := wal[off+5 : off+n]
+			entries = append(entries, walRequest{
+				reqID:    binary.BigEndian.Uint32(fields[18:]),
+				rmtReqID: binary.BigEndian.Uint32(fields[22:]),
+				payload:  fields[34:],
+			})
+		}
+		off += n
+	}
+	return entries
+}
+
+// A request of ours shares the log with the ones peers send, and only
+// rmt_req_id tells them apart. Each entry must keep the sender's id where a
+// RESOLUTION will look for it: the peer's id in rmt_req_id for a request it
+// sent, the entry's own req_id for ours, whose rmt_req_id stays 0.
 func TestSentRequestSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "requests")
@@ -101,11 +135,8 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	go w.Run(s)
 
 	remote := peer.NewRemoteNode(uuid.New(), nil)
-	if err := s.SubmitRequest(
-		remote,
-		protocol.SymlinkRequest{ReqID: 5, Src: "/srv/received"},
-		1,
-	); err != nil {
+	received := protocol.SymlinkRequest{ReqID: 5, Src: "/srv/received"}
+	if err := s.SubmitRequest(remote, received, 1); err != nil {
 		t.Fatal(err)
 	}
 	sent := protocol.SymlinkRequest{Src: "/srv/sent", Dst: "/home/peer/l"}
@@ -121,8 +152,21 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(before, sent.Encode()[protocol.RequestIDLen:]) {
-		t.Fatal("sent request is not in the WAL")
+	got := requestEntries(t, before)
+	want := []walRequest{
+		{
+			reqID:    1,
+			rmtReqID: 5,
+			payload:  received.Encode()[protocol.RequestIDLen:],
+		},
+		{
+			reqID:    2,
+			rmtReqID: 0,
+			payload:  sent.Encode()[protocol.RequestIDLen:],
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("request entries:\ngot  %+v\nwant %+v", got, want)
 	}
 
 	pending := openPending(t, dir)
