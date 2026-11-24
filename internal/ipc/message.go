@@ -43,7 +43,7 @@ type Message interface {
 
 type Request struct {
 	Header
-	Link string `json:"link"`
+	Kind string `json:"kind"`
 	Src  string `json:"src"` // <ip>://<path> until ValidateRequest splits it
 	Dst  string `json:"dst"`
 	IP   string `json:"-"` // From ValidateRequest; never taken from the client

@@ -34,9 +34,24 @@ func ValidateMessage(h *Header, id *uuid.UUID) error {
 	return nil
 }
 
-// ValidateRequest mutates req: IP is split out of Src and Src keeps only the
-// cleaned absolute path, so callers must not validate twice.
+// An unknown op passes: HandleRequest answers it with ErrUnknownOp, which
+// tells the client more than a failed check of fields the op may not have.
 func ValidateRequest(req *Request) error {
+	switch req.Op {
+	case "send":
+		switch req.Kind {
+		case "symlink", "hardlink":
+			return validateLink(req)
+		default:
+			return fmt.Errorf("unknown kind: %q", req.Kind)
+		}
+	}
+	return nil
+}
+
+// validateLink mutates req: IP is split out of Src and Src keeps only the
+// cleaned absolute path, so callers must not validate twice.
+func validateLink(req *Request) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
 	}
@@ -126,9 +141,9 @@ func HandleRequest(
 	srv *network.Server,
 ) {
 	switch req.Op {
-	case "link":
-		switch req.Link {
-		case "sym":
+	case "send":
+		switch req.Kind {
+		case "symlink":
 			ctx, cancel := context.WithTimeout(
 				context.Background(),
 				5*time.Second,
@@ -156,15 +171,8 @@ func HandleRequest(
 			SendOk(conn)
 
 			return
-		case "hard":
-			log.Printf("Link: %v.\n", req.Link)
-		default:
-			log.Printf("unknown link: %v", req.Link)
-			SendErr(
-				conn,
-				ErrInvalidRequest,
-				fmt.Errorf("unknown link: %v", req.Link),
-			)
+		case "hardlink":
+			log.Printf("Kind: %v.\n", req.Kind)
 		}
 	default:
 		log.Printf("unknown operation: %v", req.Op)
