@@ -144,3 +144,14 @@ StateNew ──► StateHandshake ──► StateVerified ──► StateClosing
 ## Transports
 
 The network layer talks to a `Transport` interface (`Listen`, `Dial`), selected by `config.NetworkConfig.Transport`. TCP is the only implementation today; QUIC is planned (its config fields already exist).
+
+## Inspecting traffic
+
+`tools/lnnp.lua` is a tshark/Wireshark dissector for LNNP: it decodes the header and the payloads of the message types above. `make sniff` captures a live session and prints one line per message, for example:
+
+```
+0.021145460  127.0.0.1  47690  127.0.0.1  5771  [LNNP] SYMLINK_REQUEST tag=3 sender_req_id=5 src="/path/file.txt" dst="/local"
+0.025038776  127.0.0.1  5771  127.0.0.1  47690  [LNNP] OK tag=3
+```
+
+It listens on `lo`, port `5771`, by default; override with `make sniff IFACE=wlp0s20f0u3 PORT=7878`. Capturing needs `sudo`. In Wireshark, load the dissector with `-X lua_script:tools/lnnp.lua` or copy it into the personal Lua plugins folder.
