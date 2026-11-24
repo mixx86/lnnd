@@ -95,7 +95,8 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 		}
 
 		if op == opRequest &&
-			entryLength >= uint32(requestRecoveryMinLen) {
+			entryLength >= uint32(requestRecoveryMinLen) &&
+			sentByPeer(entry) {
 			r.recovery = append(r.recovery, RecoveryEntry{
 				Offset: offset,
 				PeerUUID: uuid.UUID(
@@ -168,10 +169,11 @@ func (r *RequestsFile) checkTailEntries(
 				}
 
 				if opKind(opBuf[0]) == opRequest {
-					if rerr := r.addTailRecovery(offset); rerr != nil {
+					added, rerr := r.addTailRecovery(offset)
+					if rerr != nil {
 						return err, false
 					}
-					return err, true
+					return err, added
 				}
 			}
 
@@ -350,7 +352,7 @@ func (r *RequestsFile) readEntry(
 	op := opKind(entry[entryLengthLen])
 
 	switch op {
-	case opRequest, opAccepted, opRejected, opCheckpoint, opSentRequest:
+	case opRequest, opAccepted, opRejected, opCheckpoint:
 	default:
 		return nil, entryLength, op, fmt.Errorf(
 			"%w at offset %d: operation %d",
@@ -363,12 +365,21 @@ func (r *RequestsFile) readEntry(
 	return entry, entryLength, op, nil
 }
 
-// addTailRecovery handles the usual crash case: the last request was only
-// partly written, but its peer_uuid and req_id made it to disk.
-func (r *RequestsFile) addTailRecovery(offset int64) error {
+// A request of ours has rmt_req_id 0: the peer owes nothing for it, so it
+// is never asked to resend it.
+func sentByPeer(entry []byte) bool {
+	return binary.BigEndian.Uint32(
+		entry[requestRMTReqIDOffset:requestRMTReqIDOffset+requestRMTReqIDLen],
+	) != 0
+}
+
+func (r *RequestsFile) addTailRecovery(offset int64) (bool, error) {
 	var buf [requestRecoveryMinLen]byte
 	if _, err := r.file.ReadAt(buf[:], offset); err != nil {
-		return err
+		return false, err
+	}
+	if !sentByPeer(buf[:]) {
+		return false, nil
 	}
 	r.recovery = append(r.recovery, RecoveryEntry{
 		Offset: offset,
@@ -380,5 +391,5 @@ func (r *RequestsFile) addTailRecovery(offset int64) error {
 			buf[requestIDOffset : requestIDOffset+requestIDLen],
 		),
 	})
-	return nil
+	return true, nil
 }

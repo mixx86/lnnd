@@ -22,7 +22,7 @@ func openTemp(t *testing.T) (*Outbox, string) {
 }
 
 func request(src string) protocol.SymlinkRequest {
-	return protocol.SymlinkRequest{Src: src}
+	return protocol.SymlinkRequest{ReqID: 1, Src: src}
 }
 
 func TestTagsWrapAroundSkippingZero(t *testing.T) {

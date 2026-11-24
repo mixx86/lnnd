@@ -70,7 +70,7 @@ func TestRecoverRequestResendsStoredFrame(t *testing.T) {
 	h := newHarness(t)
 	sent := h.srv.Outbox.Put(
 		h.session.Remote.ID,
-		protocol.SymlinkRequest{Src: "/a"},
+		protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
 	)
 
 	done := h.handle(t, protocol.Frame{
@@ -117,7 +117,8 @@ func TestRecoverRequestUnknownTag(t *testing.T) {
 func TestOKAcksOutbox(t *testing.T) {
 	h := newHarness(t)
 	id := h.session.Remote.ID
-	tag := h.srv.Outbox.Put(id, protocol.SymlinkRequest{Src: "/a"}).Header.Tag
+	req := protocol.SymlinkRequest{ReqID: 1, Src: "/a"}
+	tag := h.srv.Outbox.Put(id, req).Header.Tag
 
 	if err := <-h.handle(t, protocol.Frame{
 		Body: protocol.OK{},
@@ -163,7 +164,7 @@ func TestInvalidPayloadKeepsSession(t *testing.T) {
 	}()
 
 	err := WriteFrame(h.remote, protocol.Frame{
-		Body: protocol.SymlinkRequest{Src: "relative/path"},
+		Body: protocol.SymlinkRequest{ReqID: 1, Src: "relative/path"},
 	}.WithTag(7))
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +292,7 @@ func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
 			}()
 
 			req := protocol.Frame{
-				Body: protocol.SymlinkRequest{Src: "/a"},
+				Body: protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
 			}.WithTag(tag)
 			if err := <-h.handle(t, req); err != nil {
 				t.Fatal(err)
@@ -345,8 +346,8 @@ func TestFramesRoundTrip(t *testing.T) {
 		},
 		protocol.OK{},
 		protocol.RecoverRequest{},
-		protocol.SymlinkRequest{Src: "/a"},
-		protocol.SymlinkRequest{Src: "/a", Dst: "/b"},
+		protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
+		protocol.SymlinkRequest{ReqID: 2, Src: "/a", Dst: "/b"},
 	}
 	go func() {
 		for i, body := range bodies {

@@ -38,13 +38,15 @@ The receiver validates the announced length against the message type before read
 | `3`  | ERROR              | 43 B                   | Error code (int64, 8 B) + message (35 B, zero-padded) |
 | `4`  | LINK_SYM           | reserved               | Direct symlink creation (peers with path permissions) |
 | `5`  | LINK_HARD          | reserved               | Direct hard link creation (peers with path permissions) |
-| `6`  | SYMLINK_REQUEST    | variable, 3–8192 B     | Ask a peer to create a symlink. Carries `src` and an optional `dst` on the receiver's machine. |
+| `6`  | SYMLINK_REQUEST    | variable, 7–8196 B     | Ask a peer to create a symlink. Carries `src` and an optional `dst` on the receiver's machine. |
 | `7`  | HARDLINK_REQUEST   | reserved               | Ask a peer to create a hard link |
 | `8`  | OK                 | 0 B                    | Success acknowledgment (echoes the request tag) |
 | `9`  | RECOVER_REQUEST    | 0 B                    | After a crash, asks a peer to resume the exchange identified by the header tag |
-| `10` | RESOLUTION         | 5 B                    | Tells a peer whether its request was accepted or rejected: `[rmt_req_id:4][accepted:1]` |
+| `10` | RESOLUTION         | 5 B                    | Tells a peer whether its request was accepted or rejected: `[rmt_req_id:4][accepted:1]`, where `rmt_req_id` is the `req_id` the peer sent the request with |
 
-**SYMLINK_REQUEST payload:** `[src_len:2][src][dst_len:2][dst]`. The `dst_len`/`dst` pair is omitted when the sender doesn't choose a destination. Paths must be absolute and are cleaned on receipt; `src` is capped at 4096 bytes (Linux `PATH_MAX`). Variable length avoids padding every request to a fixed size.
+**Request payloads** start with `[req_id:4]`, the sender's id for the request, whatever the request's type. It is never `0`: a request with `req_id` 0 is answered with `ERROR(ErrInvalidMessage)`. The receiver stores it as `rmt_req_id`; it is what a `RESOLUTION`, not sent yet, names the request by.
+
+**SYMLINK_REQUEST payload:** `[req_id:4][src_len:2][src][dst_len:2][dst]`. The `dst_len`/`dst` pair is omitted when the sender doesn't choose a destination. Paths must be absolute and are cleaned on receipt; `src` is capped at 4096 bytes (Linux `PATH_MAX`). Variable length avoids padding every request to a fixed size.
 
 ## Error codes
 

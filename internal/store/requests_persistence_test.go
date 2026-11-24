@@ -41,8 +41,8 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 
 	from := peer.NewRemoteNode(uuid.New(), nil)
 	reqs := []protocol.SymlinkRequest{
-		{Src: "/srv/a"},
-		{Src: "/srv/b", Dst: "/home/user/b"},
+		{ReqID: 7, Src: "/srv/a"},
+		{ReqID: 8, Src: "/srv/b", Dst: "/home/user/b"},
 	}
 	// One at a time, so each request is committed under its own
 	// checkpoint and the second checkpoint has to chain onto the first.
@@ -57,7 +57,7 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, req := range reqs {
-		if !bytes.Contains(before, req.Encode()) {
+		if !bytes.Contains(before, req.Encode()[protocol.RequestIDLen:]) {
 			t.Fatalf("acknowledged request %+v is not in the WAL", req)
 		}
 	}
@@ -103,7 +103,7 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	remote := peer.NewRemoteNode(uuid.New(), nil)
 	if err := s.SubmitRequest(
 		remote,
-		protocol.SymlinkRequest{Src: "/srv/received"},
+		protocol.SymlinkRequest{ReqID: 5, Src: "/srv/received"},
 		1,
 	); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(before, sent.Encode()) {
+	if !bytes.Contains(before, sent.Encode()[protocol.RequestIDLen:]) {
 		t.Fatal("sent request is not in the WAL")
 	}
 

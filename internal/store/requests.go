@@ -24,7 +24,6 @@ const (
 	opAccepted
 	opRejected
 	opCheckpoint
-	opSentRequest
 )
 
 const (
@@ -59,11 +58,13 @@ const (
 
 	requestPeerUUIDOffset = entryHeaderLen + requestTypeLen
 	requestIDOffset       = requestPeerUUIDOffset + requestPeerUUIDLen
+	requestRMTReqIDOffset = requestIDOffset + requestIDLen
 
 	requestRecoveryMinLen = entryHeaderLen +
 		requestTypeLen +
 		requestPeerUUIDLen +
-		requestIDLen
+		requestIDLen +
+		requestRMTReqIDLen
 )
 
 func NewRequestsWriter(

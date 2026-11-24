@@ -75,7 +75,7 @@ func TestConnectReadsAnswersOnOutboundSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := ob.Put(s.Remote.ID, protocol.SymlinkRequest{Src: "/a"})
+	frame := ob.Put(s.Remote.ID, protocol.SymlinkRequest{ReqID: 1, Src: "/a"})
 	if err := SendFrame(s, frame); err != nil {
 		t.Fatal(err)
 	}

@@ -164,14 +164,21 @@ func (r *RequestsFile) writeBatch(
 ) error {
 	for idx, pr := range batch {
 		var fields []byte
-		entryOp := op
-		if op == opRequest && pr.Sent {
-			entryOp = opSentRequest
-		}
 
 		switch op {
 		case opRequest:
-			reqPaths := pr.Req.Encode()
+			payload := pr.Req.Encode()
+			// The payload's leading req_id is the sender's. A request of
+			// ours keeps rmt_req_id 0, which is what marks it as ours: its
+			// id is the entry's own req_id, not yet assigned when the
+			// request was encoded.
+			var rmtReqID uint32
+			if !pr.Sent {
+				rmtReqID = binary.BigEndian.Uint32(
+					payload[:protocol.RequestIDLen],
+				)
+			}
+			reqPaths := payload[protocol.RequestIDLen:]
 
 			req := make([]byte, requestStaticFieldsLen+len(reqPaths))
 
@@ -194,7 +201,7 @@ func (r *RequestsFile) writeBatch(
 
 			binary.BigEndian.PutUint32(
 				req[offset:offset+requestRMTReqIDLen],
-				pr.RMTReqID,
+				rmtReqID,
 			)
 			offset += requestRMTReqIDLen
 
@@ -222,7 +229,7 @@ func (r *RequestsFile) writeBatch(
 		}
 
 		entryLength := uint32(entryHeaderLen + len(fields))
-		header := encodeEntryHeader(entryOp, entryLength)
+		header := encodeEntryHeader(op, entryLength)
 
 		req := make([]byte, 0, entryLength)
 		req = append(req, header[:]...)

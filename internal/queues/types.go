@@ -25,8 +25,6 @@ type PendingRequest struct {
 	Written    chan WriteResult
 	EnqueuedAt uint64
 	Tag        uint32
-	// The peer's id for the request, 0 when the request is ours.
-	RMTReqID uint32
 	// Sent marks a request of ours, logged before it goes to the peer.
 	Sent bool
 }

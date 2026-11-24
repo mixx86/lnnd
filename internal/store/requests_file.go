@@ -20,7 +20,9 @@ import (
 //
 // Request (op=0):
 // [req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8]
-// [payload]: the request's wire payload as is; req_type says how to decode it
+// [payload]: the wire payload without its leading req_id; req_type says how
+// to decode it
+// rmt_req_id is 0 for a request of ours.
 //
 // Accepted (op=1):
 // [req_id:4]
@@ -30,8 +32,6 @@ import (
 //
 // Checkpoint (op=3):
 // [checksum:4]
-//
-// Sent request (op=4): same fields as Request, rmt_req_id 0.
 
 /*
  * `rmt_req_id` should only be used to inform the peer whether a request was

@@ -198,11 +198,11 @@ func TestRequestsFileRecoveryTruncatesGarbageAfterCheckpoint(t *testing.T) {
 func TestTornTailRequestRecovery(t *testing.T) {
 	tests := []struct {
 		name     string
-		op       opKind
+		rmtReqID uint32
 		wantOwed bool
 	}{
-		{name: "received request is owed", op: opRequest, wantOwed: true},
-		{name: "sent request is not", op: opSentRequest, wantOwed: false},
+		{name: "received request is owed", rmtReqID: 5, wantOwed: true},
+		{name: "sent request is not", rmtReqID: 0, wantOwed: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,14 +228,18 @@ func TestTornTailRequestRecovery(t *testing.T) {
 			}
 
 			// A request whose header promises more bytes than reached the
-			// disk, but whose peer_uuid and req_id survived.
+			// disk, but whose peer_uuid, req_id and rmt_req_id survived.
 			fields := make([]byte, requestStaticFieldsLen+16)
 			copy(fields[requestTypeLen:], peer[:])
 			binary.BigEndian.PutUint32(
 				fields[requestTypeLen+requestPeerUUIDLen:],
 				reqID,
 			)
-			torn := testEntry(tt.op, fields)[:requestRecoveryMinLen+4]
+			binary.BigEndian.PutUint32(
+				fields[requestTypeLen+requestPeerUUIDLen+requestIDLen:],
+				tt.rmtReqID,
+			)
+			torn := testEntry(opRequest, fields)[:requestRecoveryMinLen+4]
 
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
 			if err != nil {
