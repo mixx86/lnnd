@@ -19,9 +19,24 @@ import (
 
 const maxMessageSize = 100 << 10
 
-// ValidateMessage mutates req: IP is split out of Src and Src keeps only the
+func ValidateMessage(h *Header, id *uuid.UUID) error {
+	if h.Op == "" {
+		return errors.New("you must include an operation")
+	}
+	if h.UUID != "" {
+		parsedID, err := uuid.Parse(h.UUID)
+		if err != nil {
+			log.Printf("identification error: %v", err)
+			return err
+		}
+		*id = parsedID
+	}
+	return nil
+}
+
+// ValidateRequest mutates req: IP is split out of Src and Src keeps only the
 // cleaned absolute path, so callers must not validate twice.
-func ValidateMessage(req *Request, id *uuid.UUID) error {
+func ValidateRequest(req *Request) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
 	}
@@ -38,15 +53,6 @@ func ValidateMessage(req *Request, id *uuid.UUID) error {
 	req.IP = parts[0]
 
 	req.Src = cleanPath
-
-	if req.UUID != "" {
-		parsedID, err := uuid.Parse(req.UUID)
-		if err != nil {
-			log.Printf("identification error: %v", err)
-			return err
-		}
-		*id = parsedID
-	}
 
 	return nil
 }
@@ -75,32 +81,54 @@ func HandleConn(conn net.Conn, s app.Services, srv *network.Server) {
 	}
 
 	msg, err := ParseMessage(data)
+	if errors.Is(err, errUnknownType) {
+		log.Printf("Error parsing message: %v", err)
+		SendErr(conn, ErrUnknownType, err)
+		return
+	}
 	if err != nil {
 		log.Printf("Error deserializing json data: %v", err)
 		SendErr(conn, ErrInvalidMessage, err)
 		return
 	}
-	HandleMessage(&msg, conn, s, srv)
+	id := uuid.UUID{}
+	if err := ValidateMessage(msg.header(), &id); err != nil {
+		log.Printf("validation error: %v", err)
+		SendErr(conn, ErrInvalidMessage, err)
+		return
+	}
+	HandleMessage(msg, id, conn, s, srv)
 }
 
 func HandleMessage(
+	msg Message,
+	id uuid.UUID,
+	conn net.Conn,
+	s app.Services,
+	srv *network.Server,
+) {
+	switch m := msg.(type) {
+	case *Request:
+		if err := ValidateRequest(m); err != nil {
+			log.Printf("validation error: %v", err)
+			SendErr(conn, ErrInvalidRequest, err)
+			return
+		}
+		HandleRequest(m, id, conn, s, srv)
+	}
+}
+
+func HandleRequest(
 	req *Request,
+	id uuid.UUID,
 	conn net.Conn,
 	s app.Services,
 	srv *network.Server,
 ) {
 	switch req.Op {
 	case "link":
-		id := uuid.UUID{}
-		err := ValidateMessage(req, &id)
-		if err != nil {
-			log.Printf("validation error: %v", err)
-			SendErr(conn, ErrInvalidMessage, err)
-			return
-		}
-
-		switch req.Type {
-		case "symreq":
+		switch req.Link {
+		case "sym":
 			ctx, cancel := context.WithTimeout(
 				context.Background(),
 				5*time.Second,
@@ -129,10 +157,14 @@ func HandleMessage(
 
 			return
 		case "hard":
-			log.Printf("Type: %v.\n", req.Type)
+			log.Printf("Link: %v.\n", req.Link)
 		default:
-			log.Printf("unknown type: %v", req.Type)
-			SendErr(conn, ErrUnknownType, fmt.Errorf("unknown type: %v", req.Type))
+			log.Printf("unknown link: %v", req.Link)
+			SendErr(
+				conn,
+				ErrInvalidRequest,
+				fmt.Errorf("unknown link: %v", req.Link),
+			)
 		}
 	default:
 		log.Printf("unknown operation: %v", req.Op)
