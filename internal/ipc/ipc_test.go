@@ -18,16 +18,20 @@ func parseRequest(t *testing.T, data []byte) *Request {
 	return req
 }
 
+func sendSymlink(src string) *Request {
+	return &Request{Header: Header{Op: "send"}, Kind: "symlink", Src: src}
+}
+
 func TestParseMessage_valid(t *testing.T) {
 	req := parseRequest(t, []byte(
-		`{"type":"request","op":"link","link":"sym",`+
+		`{"type":"request","op":"send","kind":"symlink",`+
 			`"src":"192.168.1.34://path/to/file","dst":"./link"}`,
 	))
-	if req.Op != "link" {
-		t.Errorf("Op: got %q, want %q", req.Op, "link")
+	if req.Op != "send" {
+		t.Errorf("Op: got %q, want %q", req.Op, "send")
 	}
-	if req.Link != "sym" {
-		t.Errorf("Link: got %q, want %q", req.Link, "sym")
+	if req.Kind != "symlink" {
+		t.Errorf("Kind: got %q, want %q", req.Kind, "symlink")
 	}
 	// ParseMessage only deserializes; Src stays untouched until
 	// ValidateRequest runs.
@@ -46,7 +50,7 @@ func TestParseMessage_ignoresIPField(t *testing.T) {
 	// IP is derived by ValidateRequest; a client must not be able to set
 	// it directly.
 	req := parseRequest(t, []byte(
-		`{"type":"request","op":"link","link":"sym",`+
+		`{"type":"request","op":"send","kind":"symlink",`+
 			`"src":"192.168.1.34://f","ip":"10.0.0.1"}`,
 	))
 	if req.IP != "" {
@@ -75,8 +79,18 @@ func TestParseMessage_unknownType(t *testing.T) {
 	}
 }
 
+// A kind that passed validation would reach HandleRequest, which has no
+// case for it and would close the connection without an answer.
+func TestValidate_unknownKind(t *testing.T) {
+	req := sendSymlink("192.168.1.34://path/to/file")
+	req.Kind = "sym"
+	if err := ValidateRequest(req); err == nil {
+		t.Fatal("expected error for unknown kind")
+	}
+}
+
 func TestValidate_valid(t *testing.T) {
-	req := &Request{Src: "192.168.1.34://path/to/file"}
+	req := sendSymlink("192.168.1.34://path/to/file")
 	if err := ValidateRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +103,7 @@ func TestValidate_valid(t *testing.T) {
 }
 
 func TestValidate_ipv6(t *testing.T) {
-	req := &Request{Src: "::1://path/to/file"}
+	req := sendSymlink("::1://path/to/file")
 	if err := ValidateRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,35 +116,35 @@ func TestValidate_ipv6(t *testing.T) {
 }
 
 func TestValidate_emptySrc(t *testing.T) {
-	req := &Request{Src: ""}
+	req := sendSymlink("")
 	if err := ValidateRequest(req); err == nil {
 		t.Fatal("expected error for empty Src")
 	}
 }
 
 func TestValidate_missingScheme(t *testing.T) {
-	req := &Request{Src: "192.168.1.34/path/to/file"}
+	req := sendSymlink("192.168.1.34/path/to/file")
 	if err := ValidateRequest(req); err == nil {
 		t.Fatal("expected error for missing ://")
 	}
 }
 
 func TestValidate_invalidIP(t *testing.T) {
-	req := &Request{Src: "notanip://path/to/file"}
+	req := sendSymlink("notanip://path/to/file")
 	if err := ValidateRequest(req); err == nil {
 		t.Fatal("expected error for invalid IP")
 	}
 }
 
 func TestValidate_hostnameRejected(t *testing.T) {
-	req := &Request{Src: "example.com://path/to/file"}
+	req := sendSymlink("example.com://path/to/file")
 	if err := ValidateRequest(req); err == nil {
 		t.Fatal("expected error: only IP addresses are accepted, not hostnames")
 	}
 }
 
 func TestValidate_pathNormalized(t *testing.T) {
-	req := &Request{Src: "192.168.1.34://path/../path/to/file"}
+	req := sendSymlink("192.168.1.34://path/../path/to/file")
 	if err := ValidateRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -144,7 +158,7 @@ func TestValidate_pathNormalized(t *testing.T) {
 }
 
 func TestValidate_pathCannotEscapeRoot(t *testing.T) {
-	req := &Request{Src: "192.168.1.34://../../etc/passwd"}
+	req := sendSymlink("192.168.1.34://../../etc/passwd")
 	if err := ValidateRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +168,7 @@ func TestValidate_pathCannotEscapeRoot(t *testing.T) {
 }
 
 func TestValidate_emptyPathBecomesRoot(t *testing.T) {
-	req := &Request{Src: "192.168.1.34://"}
+	req := sendSymlink("192.168.1.34://")
 	if err := ValidateRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
