@@ -6,28 +6,29 @@ import (
 	"path/filepath"
 )
 
-// Every request payload starts with the sender's req_id, whatever the
-// request's type, so the requests WAL can keep it in a field of its own.
-const RequestIDLen = 4
+// Every request payload starts with sender_req_id, the sender's id for it,
+// whatever the request's type, so the requests WAL can keep it in a field of
+// its own.
+const SenderReqIDLen = 4
 
 // Dst is optional: if empty, the receiver decides the local path.
 type SymlinkRequest struct {
-	ReqID uint32
-	Src   string
-	Dst   string
+	SenderReqID uint32
+	Src         string
+	Dst         string
 }
 
-// Payload layout: [req_id:4][src_len:2][src][dst_len:2][dst]
+// Payload layout: [sender_req_id:4][src_len:2][src][dst_len:2][dst]
 // Variable-length rather than fixed 8 KB to avoid padding on every request.
-func EncodeSymlinkRequest(reqID uint32, src string, dst string) []byte {
-	payloadSize := RequestIDLen + 2 + len(src)
+func EncodeSymlinkRequest(senderReqID uint32, src string, dst string) []byte {
+	payloadSize := SenderReqIDLen + 2 + len(src)
 	if dst != "" {
 		payloadSize += 2 + len(dst)
 	}
 	packet := make([]byte, payloadSize)
 
-	binary.BigEndian.PutUint32(packet[:RequestIDLen], reqID)
-	cursor := RequestIDLen
+	binary.BigEndian.PutUint32(packet[:SenderReqIDLen], senderReqID)
+	cursor := SenderReqIDLen
 	binary.BigEndian.PutUint16(packet[cursor:], uint16(len(src)))
 	cursor += 2
 	copy(packet[cursor:], src)
@@ -42,13 +43,13 @@ func EncodeSymlinkRequest(reqID uint32, src string, dst string) []byte {
 }
 
 func (r SymlinkRequest) Encode() []byte {
-	return EncodeSymlinkRequest(r.ReqID, r.Src, r.Dst)
+	return EncodeSymlinkRequest(r.SenderReqID, r.Src, r.Dst)
 }
 
 func (SymlinkRequest) Type() MsgType { return MsgSymlinkRequest }
 
 func (r SymlinkRequest) Size() uint32 {
-	payloadSize := uint32(RequestIDLen)
+	payloadSize := uint32(SenderReqIDLen)
 	if r.Src != "" {
 		payloadSize += uint32(2 + len(r.Src))
 	}
@@ -61,22 +62,22 @@ func (r SymlinkRequest) Size() uint32 {
 }
 
 func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
-	if len(payload) < RequestIDLen+2 {
+	if len(payload) < SenderReqIDLen+2 {
 		return SymlinkRequest{}, fmt.Errorf(
-			"%w: payload too short for req_id and src_len",
+			"%w: payload too short for sender_req_id and src_len",
 			MsgErrInvalidMessage,
 		)
 	}
-	reqID := binary.BigEndian.Uint32(payload[:RequestIDLen])
+	senderReqID := binary.BigEndian.Uint32(payload[:SenderReqIDLen])
 	// Ids start at 1, and 0 is the requests WAL's "no remote id": a request
 	// stored with it could not be named in its RESOLUTION.
-	if reqID == 0 {
+	if senderReqID == 0 {
 		return SymlinkRequest{}, fmt.Errorf(
-			"%w: req_id 0",
+			"%w: sender_req_id 0",
 			MsgErrInvalidMessage,
 		)
 	}
-	payload = payload[RequestIDLen:]
+	payload = payload[SenderReqIDLen:]
 
 	lenSrc := binary.BigEndian.Uint16(payload[:2])
 
@@ -151,18 +152,18 @@ func ParseSymlinkRequest(payload []byte) (SymlinkRequest, error) {
 	}
 
 	return SymlinkRequest{
-		ReqID: reqID,
-		Src:   cleanSrc,
-		Dst:   cleanDst,
+		SenderReqID: senderReqID,
+		Src:         cleanSrc,
+		Dst:         cleanDst,
 	}, nil
 }
 
 func (SymlinkRequest) inboundRequest() {}
 
 const (
-	resolutionReqIDLen    = 4
-	resolutionAcceptedLen = 1
-	ResolutionPayloadSize = resolutionReqIDLen + resolutionAcceptedLen
+	resolutionSenderReqIDLen = 4
+	resolutionAcceptedLen    = 1
+	ResolutionPayloadSize    = resolutionSenderReqIDLen + resolutionAcceptedLen
 )
 
 type Resolution struct {
@@ -171,12 +172,12 @@ type Resolution struct {
 	Accepted bool
 }
 
-// Payload layout: [rmt_req_id:4][accepted:1]
+// Payload layout: [sender_req_id:4][accepted:1]
 func (r Resolution) Encode() []byte {
 	buf := make([]byte, ResolutionPayloadSize)
-	binary.BigEndian.PutUint32(buf[:resolutionReqIDLen], r.RMTReqID)
+	binary.BigEndian.PutUint32(buf[:resolutionSenderReqIDLen], r.RMTReqID)
 	if r.Accepted {
-		buf[resolutionReqIDLen] = 1
+		buf[resolutionSenderReqIDLen] = 1
 	}
 	return buf
 }

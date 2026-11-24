@@ -34,8 +34,8 @@ func FuzzReadFrame(f *testing.F) {
 		},
 		protocol.OK{},
 		protocol.RecoverRequest{},
-		protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
-		protocol.SymlinkRequest{ReqID: 2, Src: "/a", Dst: "/b"},
+		protocol.SymlinkRequest{SenderReqID: 1, Src: "/a"},
+		protocol.SymlinkRequest{SenderReqID: 2, Src: "/a", Dst: "/b"},
 	}
 	for i, body := range seeds {
 		f.Add(protocol.Frame{Body: body}.WithTag(uint32(i)).Encode())
@@ -44,7 +44,7 @@ func FuzzReadFrame(f *testing.F) {
 	f.Add(symlinkRequestFrame([]byte{0, 0, 0, 1, 0xff, 0xff, '/'}))
 	// dst_len points past the end of the payload.
 	f.Add(symlinkRequestFrame([]byte{0, 0, 0, 1, 0, 1, '/', 0xff, 0xff, '/'}))
-	// req_id 0 names no request of the sender.
+	// sender_req_id 0 names no request of the sender.
 	f.Add(symlinkRequestFrame([]byte{0, 0, 0, 0, 0, 1, '/'}))
 
 	f.Fuzz(func(t *testing.T, data []byte) {

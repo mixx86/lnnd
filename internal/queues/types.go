@@ -29,11 +29,11 @@ type PendingRequest struct {
 	Sent bool
 }
 
-// WriteResult carries the req_id the writer assigned: a request of ours
+// WriteResult carries the lcl_req_id the writer assigned: a request of ours
 // needs it before it goes to the peer.
 type WriteResult struct {
-	ReqID uint32
-	Err   error
+	LCLReqID uint32
+	Err      error
 }
 
 type RequestsQueue struct {

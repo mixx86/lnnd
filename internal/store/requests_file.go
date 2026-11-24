@@ -9,7 +9,7 @@ import (
 )
 
 // File header format:
-// [magic:4][lco:8][current_req_id:4]
+// [magic:4][lco:8][current_lcl_req_id:4]
 // lco stands for "last checkpoint offset"
 // Entry format:
 // Entry header:
@@ -19,16 +19,16 @@ import (
 // Payload:
 //
 // Request (op=0):
-// [req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8]
-// [payload]: the wire payload without its leading req_id; req_type says how
-// to decode it
+// [req_type:2][peer_uuid:16][lcl_req_id:4][rmt_req_id:4][unix_ts:8]
+// [payload]: the wire payload without its leading sender_req_id; req_type
+// says how to decode it
 // rmt_req_id is 0 for a request of ours.
 //
 // Accepted (op=1):
-// [req_id:4]
+// [lcl_req_id:4]
 //
 // Rejected (op=2):
-// [req_id:4]
+// [lcl_req_id:4]
 //
 // Checkpoint (op=3):
 // [checksum:4]
@@ -148,7 +148,7 @@ func (r *RequestsFile) writeFileHeader() {
 	)
 	binary.BigEndian.PutUint32(
 		header[fileHeaderMagicLen+fileHeaderLCOLen:fileHeaderMagicLen+
-			fileHeaderLCOLen+fileHeaderReqIDLen],
+			fileHeaderLCOLen+fileHeaderLCLReqIDLen],
 		0,
 	)
 

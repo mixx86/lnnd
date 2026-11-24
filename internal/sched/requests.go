@@ -57,7 +57,7 @@ func (s *Service) submitRequest(
 		if res.Err != nil {
 			return 0, res.Err
 		}
-		return res.ReqID, nil
+		return res.LCLReqID, nil
 	case <-time.After(writeConfirmTimeout):
 		return 0, ErrWriteTimeout
 	}

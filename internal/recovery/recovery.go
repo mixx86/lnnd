@@ -11,18 +11,18 @@ import (
 	"lnn/internal/fsutil"
 )
 
-// Record format: [peer_uuid:16][req_id:4][tag:4]
+// Record format: [peer_uuid:16][lcl_req_id:4][tag:4]
 const (
-	peerLen   = 16
-	reqIDLen  = 4
-	tagLen    = 4
-	recordLen = peerLen + reqIDLen + tagLen
+	peerLen     = 16
+	lclReqIDLen = 4
+	tagLen      = 4
+	recordLen   = peerLen + lclReqIDLen + tagLen
 )
 
 type Entry struct {
-	Peer  uuid.UUID
-	ReqID uint32
-	Tag   uint32
+	Peer     uuid.UUID
+	LCLReqID uint32
+	Tag      uint32
 }
 
 type key struct {
@@ -55,9 +55,13 @@ func Open(path string) (*Pending, error) {
 	// foreign damage; keep whatever complete records precede it.
 	for len(data) >= recordLen {
 		e := Entry{
-			Peer:  uuid.UUID(data[:peerLen]),
-			ReqID: binary.BigEndian.Uint32(data[peerLen : peerLen+reqIDLen]),
-			Tag:   binary.BigEndian.Uint32(data[peerLen+reqIDLen : recordLen]),
+			Peer: uuid.UUID(data[:peerLen]),
+			LCLReqID: binary.BigEndian.Uint32(
+				data[peerLen : peerLen+lclReqIDLen],
+			),
+			Tag: binary.BigEndian.Uint32(
+				data[peerLen+lclReqIDLen : recordLen],
+			),
 		}
 		p.entries[key{e.Peer, e.Tag}] = e
 		data = data[recordLen:]
@@ -108,8 +112,8 @@ func (p *Pending) save() error {
 	for _, e := range p.entries {
 		var rec [recordLen]byte
 		copy(rec[:peerLen], e.Peer[:])
-		binary.BigEndian.PutUint32(rec[peerLen:peerLen+reqIDLen], e.ReqID)
-		binary.BigEndian.PutUint32(rec[peerLen+reqIDLen:], e.Tag)
+		binary.BigEndian.PutUint32(rec[peerLen:peerLen+lclReqIDLen], e.LCLReqID)
+		binary.BigEndian.PutUint32(rec[peerLen+lclReqIDLen:], e.Tag)
 		buf = append(buf, rec[:]...)
 	}
 	return fsutil.WriteFileAtomic(p.path, buf)

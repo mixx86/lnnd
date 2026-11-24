@@ -42,11 +42,11 @@ The receiver validates the announced length against the message type before read
 | `7`  | HARDLINK_REQUEST   | reserved               | Ask a peer to create a hard link |
 | `8`  | OK                 | 0 B                    | Success acknowledgment (echoes the request tag) |
 | `9`  | RECOVER_REQUEST    | 0 B                    | After a crash, asks a peer to resume the exchange identified by the header tag |
-| `10` | RESOLUTION         | 5 B                    | Tells a peer whether its request was accepted or rejected: `[rmt_req_id:4][accepted:1]`, where `rmt_req_id` is the `req_id` the peer sent the request with |
+| `10` | RESOLUTION         | 5 B                    | Tells a peer whether its request was accepted or rejected: `[sender_req_id:4][accepted:1]`, where `sender_req_id` is the one the peer sent the request with |
 
-**Request payloads** start with `[req_id:4]`, the sender's id for the request, whatever the request's type. It is never `0`: a request with `req_id` 0 is answered with `ERROR(ErrInvalidMessage)`. The receiver stores it as `rmt_req_id`; it is what a `RESOLUTION`, not sent yet, names the request by.
+**Request payloads** start with `[sender_req_id:4]`, the sender's id for the request, whatever the request's type. It is never `0`: a request with `sender_req_id` 0 is answered with `ERROR(ErrInvalidMessage)`. The receiver stores it as `rmt_req_id`; it is what a `RESOLUTION`, not sent yet, names the request by.
 
-**SYMLINK_REQUEST payload:** `[req_id:4][src_len:2][src][dst_len:2][dst]`. The `dst_len`/`dst` pair is omitted when the sender doesn't choose a destination. Paths must be absolute and are cleaned on receipt; `src` is capped at 4096 bytes (Linux `PATH_MAX`). Variable length avoids padding every request to a fixed size.
+**SYMLINK_REQUEST payload:** `[sender_req_id:4][src_len:2][src][dst_len:2][dst]`. The `dst_len`/`dst` pair is omitted when the sender doesn't choose a destination. Paths must be absolute and are cleaned on receipt; `src` is capped at 4096 bytes (Linux `PATH_MAX`). Variable length avoids padding every request to a fixed size.
 
 ## Error codes
 
@@ -112,7 +112,7 @@ Recovery lets a daemon that crashed while persisting a request get it back from 
      │                                            │
      │──── SYMLINK_REQUEST (tag 42) ─────────────►│  WAL write interrupted
      │                                            │  restart: damaged entry,
-     │                                            │  req_id → tag 42 from cache
+     │                                            │  lcl_req_id → tag 42 from cache
      │◄─── RECOVER_REQUEST (tag 42) ──────────────│
      │                                            │
      │──── SYMLINK_REQUEST (tag 42) ─────────────►│  resend from outbox
@@ -124,7 +124,7 @@ Recovery lets a daemon that crashed while persisting a request get it back from 
 
 **Sender — outbox.** Every outgoing request is kept per peer, keyed by tag, until the peer answers with `OK` or `ERROR`. The receiver only sends `OK` after the request and its checkpoint are fsynced, so a confirmed request can never need recovery. The window holds 256 requests per peer; when it is full the oldest one is dropped, and asking for it yields `ErrUnknownTag`. The outbox is mirrored to `~/.lnn/outbox` so the sender can answer even after its own crash.
 
-**Receiver — pending recoveries.** At startup, damaged request entries whose `peer_uuid` and `req_id` survived are looked up in the requests cache for their tag and written to `~/.lnn/requests.recovery` before the damaged WAL region is truncated. An entry leaves the list when the peer resends the request (once it is durable again) or answers `ErrUnknownTag`.
+**Receiver — pending recoveries.** At startup, damaged request entries whose `peer_uuid` and `lcl_req_id` survived are looked up in the requests cache for their tag and written to `~/.lnn/requests.recovery` before the damaged WAL region is truncated. An entry leaves the list when the peer resends the request (once it is durable again) or answers `ErrUnknownTag`.
 
 After every handshake, inbound or outbound, the receiver sends one `RECOVER_REQUEST` per pending entry of that peer. Entries are not removed when sent, so if the connection drops before the peer answers, they are asked for again on the next connection.
 

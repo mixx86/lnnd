@@ -211,7 +211,7 @@ func TestTornTailRequestRecovery(t *testing.T) {
 			layout := writeTestWAL(t, path)
 
 			peer := uuid.New()
-			const reqID, tag = 7, 42
+			const lclReqID, tag = 7, 42
 
 			cache, err := OpenRequestsCache(
 				filepath.Join(dir, "requests.cache"),
@@ -220,7 +220,7 @@ func TestTornTailRequestRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := cache.Put(reqID, tag, true); err != nil {
+			if err := cache.Put(lclReqID, tag, true); err != nil {
 				t.Fatal(err)
 			}
 			if err := cache.Close(); err != nil {
@@ -228,15 +228,15 @@ func TestTornTailRequestRecovery(t *testing.T) {
 			}
 
 			// A request whose header promises more bytes than reached the
-			// disk, but whose peer_uuid, req_id and rmt_req_id survived.
+			// disk, but whose peer_uuid, lcl_req_id and rmt_req_id survived.
 			fields := make([]byte, requestStaticFieldsLen+16)
 			copy(fields[requestTypeLen:], peer[:])
 			binary.BigEndian.PutUint32(
 				fields[requestTypeLen+requestPeerUUIDLen:],
-				reqID,
+				lclReqID,
 			)
 			binary.BigEndian.PutUint32(
-				fields[requestTypeLen+requestPeerUUIDLen+requestIDLen:],
+				fields[requestTypeLen+requestPeerUUIDLen+requestLCLReqIDLen:],
 				tt.rmtReqID,
 			)
 			torn := testEntry(opRequest, fields)[:requestRecoveryMinLen+4]
@@ -266,7 +266,9 @@ func TestTornTailRequestRecovery(t *testing.T) {
 			got := pending.ForPeer(peer)
 			var want []recovery.Entry
 			if tt.wantOwed {
-				want = []recovery.Entry{{Peer: peer, ReqID: reqID, Tag: tag}}
+				want = []recovery.Entry{
+					{Peer: peer, LCLReqID: lclReqID, Tag: tag},
+				}
 			}
 			if len(got) != len(want) || (len(want) == 1 && got[0] != want[0]) {
 				t.Fatalf("pending recoveries: got %+v, want %+v", got, want)

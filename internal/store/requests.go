@@ -27,12 +27,13 @@ const (
 )
 
 const (
-	fileHeaderMagic    uint32 = 0x4C4E4E52 // "LNNR"
-	fileHeaderMagicLen        = 4
-	fileHeaderLCOLen          = 8
-	fileHeaderReqIDLen        = 4
+	fileHeaderMagic       uint32 = 0x4C4E4E52 // "LNNR"
+	fileHeaderMagicLen           = 4
+	fileHeaderLCOLen             = 8
+	fileHeaderLCLReqIDLen        = 4
 
-	fileHeaderLen = fileHeaderMagicLen + fileHeaderLCOLen + fileHeaderReqIDLen
+	fileHeaderLen = fileHeaderMagicLen + fileHeaderLCOLen +
+		fileHeaderLCLReqIDLen
 )
 
 const (
@@ -49,21 +50,21 @@ const (
 const (
 	requestTypeLen     = 2
 	requestPeerUUIDLen = 16
-	requestIDLen       = 4
+	requestLCLReqIDLen = 4
 	requestRMTReqIDLen = 4
 	requestUnixTSLen   = 8
 
 	requestStaticFieldsLen = requestTypeLen + requestPeerUUIDLen +
-		requestIDLen + requestRMTReqIDLen + requestUnixTSLen
+		requestLCLReqIDLen + requestRMTReqIDLen + requestUnixTSLen
 
 	requestPeerUUIDOffset = entryHeaderLen + requestTypeLen
-	requestIDOffset       = requestPeerUUIDOffset + requestPeerUUIDLen
-	requestRMTReqIDOffset = requestIDOffset + requestIDLen
+	requestLCLReqIDOffset = requestPeerUUIDOffset + requestPeerUUIDLen
+	requestRMTReqIDOffset = requestLCLReqIDOffset + requestLCLReqIDLen
 
 	requestRecoveryMinLen = entryHeaderLen +
 		requestTypeLen +
 		requestPeerUUIDLen +
-		requestIDLen +
+		requestLCLReqIDLen +
 		requestRMTReqIDLen
 )
 
@@ -92,11 +93,11 @@ func NewRequestsWriter(
 }
 
 func (w *RequestsWriter) Run(s *sched.Service) {
-	srcReqID, err := w.reqFile.getReqID()
+	srcReqID, err := w.reqFile.getLCLReqID()
 	if err != nil {
 		logger.Daemon.Fatalf("error: %v", err)
 	}
-	reqID.Store(srcReqID)
+	lclReqID.Store(srcReqID)
 
 	if err := w.repairOnStartup(); err != nil {
 		logger.Daemon.Fatalf("repairing requests file: %v", err)
@@ -141,27 +142,27 @@ func (w *RequestsWriter) repairOnStartup() error {
 	return w.reqFile.removeTail()
 }
 
-func (r *RequestsFile) getReqID() (uint32, error) {
-	var buf [fileHeaderReqIDLen]byte
+func (r *RequestsFile) getLCLReqID() (uint32, error) {
+	var buf [fileHeaderLCLReqIDLen]byte
 
 	_, err := r.file.ReadAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen)
 	if err != nil {
-		logger.Daemon.Printf("error: reading current_req_id: %v", err)
+		logger.Daemon.Printf("error: reading current_lcl_req_id: %v", err)
 		return 0, err
 	}
 
 	return binary.BigEndian.Uint32(buf[:]), nil
 }
 
-func (r *RequestsFile) nextReqID() uint32 {
-	id := reqID.Add(1)
+func (r *RequestsFile) nextLCLReqID() uint32 {
+	id := lclReqID.Add(1)
 
-	var buf [fileHeaderReqIDLen]byte
+	var buf [fileHeaderLCLReqIDLen]byte
 	binary.BigEndian.PutUint32(buf[:], id)
 
 	_, err := r.file.WriteAt(buf[:], fileHeaderMagicLen+fileHeaderLCOLen)
 	if err != nil {
-		logger.Daemon.Printf("error: writing current_req_id: %v", err)
+		logger.Daemon.Printf("error: writing current_lcl_req_id: %v", err)
 	}
 
 	return id

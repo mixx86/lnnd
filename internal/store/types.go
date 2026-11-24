@@ -30,10 +30,10 @@ type RequestsFile struct {
 type RecoveryEntry struct {
 	Offset   int64
 	PeerUUID [16]byte
-	ReqID    uint32
+	LCLReqID uint32
 }
 
-var reqID atomic.Uint32
+var lclReqID atomic.Uint32
 
 type RequestsWriter struct {
 	pending *recovery.Pending

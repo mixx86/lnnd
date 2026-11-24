@@ -187,7 +187,7 @@ func submitRequest(
 	} else if ok {
 		logger.Daemon.Printf(
 			"recovered request %d from peer %v",
-			e.ReqID,
+			e.LCLReqID,
 			s.Remote.ID,
 		)
 	}
@@ -206,7 +206,7 @@ func requestRecoveries(srv *Server, s *peer.Session) {
 		if err != nil {
 			logger.Daemon.Printf(
 				"requesting recovery of request %d from peer %v: %v",
-				e.ReqID,
+				e.LCLReqID,
 				s.Remote.ID,
 				err,
 			)
@@ -225,7 +225,7 @@ func dropRecovery(srv *Server, s *peer.Session, tag uint32) {
 		logger.Daemon.Printf(
 			"peer %v no longer has request %d (tag %d); dropping it",
 			s.Remote.ID,
-			e.ReqID,
+			e.LCLReqID,
 			tag,
 		)
 	}

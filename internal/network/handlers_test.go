@@ -70,7 +70,7 @@ func TestRecoverRequestResendsStoredFrame(t *testing.T) {
 	h := newHarness(t)
 	sent := h.srv.Outbox.Put(
 		h.session.Remote.ID,
-		protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
+		protocol.SymlinkRequest{SenderReqID: 1, Src: "/a"},
 	)
 
 	done := h.handle(t, protocol.Frame{
@@ -117,7 +117,7 @@ func TestRecoverRequestUnknownTag(t *testing.T) {
 func TestOKAcksOutbox(t *testing.T) {
 	h := newHarness(t)
 	id := h.session.Remote.ID
-	req := protocol.SymlinkRequest{ReqID: 1, Src: "/a"}
+	req := protocol.SymlinkRequest{SenderReqID: 1, Src: "/a"}
 	tag := h.srv.Outbox.Put(id, req).Header.Tag
 
 	if err := <-h.handle(t, protocol.Frame{
@@ -134,7 +134,7 @@ func TestUnknownTagErrorDropsRecoveryAndKeepsConnection(t *testing.T) {
 	h := newHarness(t)
 	id := h.session.Remote.ID
 	if err := h.srv.Recovery.Add(
-		recovery.Entry{Peer: id, ReqID: 3, Tag: 5},
+		recovery.Entry{Peer: id, LCLReqID: 3, Tag: 5},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestInvalidPayloadKeepsSession(t *testing.T) {
 	}()
 
 	err := WriteFrame(h.remote, protocol.Frame{
-		Body: protocol.SymlinkRequest{ReqID: 1, Src: "relative/path"},
+		Body: protocol.SymlinkRequest{SenderReqID: 1, Src: "relative/path"},
 	}.WithTag(7))
 	if err != nil {
 		t.Fatal(err)
@@ -197,9 +197,9 @@ func TestRequestRecoveriesSendsOwedTags(t *testing.T) {
 	h := newHarness(t)
 	id := h.session.Remote.ID
 	if err := h.srv.Recovery.Add(
-		recovery.Entry{Peer: id, ReqID: 1, Tag: 10},
-		recovery.Entry{Peer: id, ReqID: 2, Tag: 20},
-		recovery.Entry{Peer: uuid.New(), ReqID: 3, Tag: 30},
+		recovery.Entry{Peer: id, LCLReqID: 1, Tag: 10},
+		recovery.Entry{Peer: id, LCLReqID: 2, Tag: 20},
+		recovery.Entry{Peer: uuid.New(), LCLReqID: 3, Tag: 30},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
 			// The tag is owed by a crash recovery: this request is the
 			// peer's resend.
 			err := h.srv.Recovery.Add(
-				recovery.Entry{Peer: id, ReqID: 3, Tag: tag},
+				recovery.Entry{Peer: id, LCLReqID: 3, Tag: tag},
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -292,7 +292,7 @@ func TestSymlinkRequestRepliesOnlyOnceWriteIsSettled(t *testing.T) {
 			}()
 
 			req := protocol.Frame{
-				Body: protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
+				Body: protocol.SymlinkRequest{SenderReqID: 1, Src: "/a"},
 			}.WithTag(tag)
 			if err := <-h.handle(t, req); err != nil {
 				t.Fatal(err)
@@ -346,8 +346,8 @@ func TestFramesRoundTrip(t *testing.T) {
 		},
 		protocol.OK{},
 		protocol.RecoverRequest{},
-		protocol.SymlinkRequest{ReqID: 1, Src: "/a"},
-		protocol.SymlinkRequest{ReqID: 2, Src: "/a", Dst: "/b"},
+		protocol.SymlinkRequest{SenderReqID: 1, Src: "/a"},
+		protocol.SymlinkRequest{SenderReqID: 2, Src: "/a", Dst: "/b"},
 	}
 	go func() {
 		for i, body := range bodies {

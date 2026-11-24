@@ -12,14 +12,14 @@ import (
 func (w *RequestsWriter) recordRecoveries() error {
 	var entries []recovery.Entry
 	for _, e := range w.reqFile.recovery {
-		tag, ok := w.reqCache.GetTag(e.ReqID)
+		tag, ok := w.reqCache.GetTag(e.LCLReqID)
 		if !ok {
 			continue
 		}
 		entries = append(entries, recovery.Entry{
-			Peer:  e.PeerUUID,
-			ReqID: e.ReqID,
-			Tag:   tag,
+			Peer:     e.PeerUUID,
+			LCLReqID: e.LCLReqID,
+			Tag:      tag,
 		})
 	}
 	if len(entries) == 0 {

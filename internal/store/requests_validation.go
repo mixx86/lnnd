@@ -103,8 +103,9 @@ func (r *RequestsFile) checkEntries() (error, bool) {
 					entry[requestPeerUUIDOffset : requestPeerUUIDOffset+
 						requestPeerUUIDLen],
 				),
-				ReqID: binary.BigEndian.Uint32(
-					entry[requestIDOffset : requestIDOffset+requestIDLen],
+				LCLReqID: binary.BigEndian.Uint32(
+					entry[requestLCLReqIDOffset : requestLCLReqIDOffset+
+						requestLCLReqIDLen],
 				),
 			})
 			recoverable = true
@@ -154,7 +155,7 @@ func (r *RequestsFile) checkTailEntries(
 		entry, entryLength, op, err := r.readEntry(offset, fileSize)
 		if err != nil {
 			// The entry is truncated/corrupt. Check whether enough of the
-			// request survived to recover peer_uuid + req_id.
+			// request survived to recover peer_uuid + lcl_req_id.
 			remaining := fileSize - offset
 			minRequestLen := int64(requestRecoveryMinLen)
 
@@ -387,8 +388,9 @@ func (r *RequestsFile) addTailRecovery(offset int64) (bool, error) {
 			buf[requestPeerUUIDOffset : requestPeerUUIDOffset+
 				requestPeerUUIDLen],
 		),
-		ReqID: binary.BigEndian.Uint32(
-			buf[requestIDOffset : requestIDOffset+requestIDLen],
+		LCLReqID: binary.BigEndian.Uint32(
+			buf[requestLCLReqIDOffset : requestLCLReqIDOffset+
+				requestLCLReqIDLen],
 		),
 	})
 	return true, nil

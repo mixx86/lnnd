@@ -9,13 +9,13 @@ import (
 )
 
 //  slot:
-//    [req_id:4]
+//    [lcl_req_id:4]
 //    [tag:4]
 
 const (
-	cacheReqIDLen = 4
-	cacheTagLen   = 4
-	cacheEntryLen = cacheReqIDLen + cacheTagLen
+	cacheLCLReqIDLen = 4
+	cacheTagLen      = 4
+	cacheEntryLen    = cacheLCLReqIDLen + cacheTagLen
 )
 
 func OpenRequestsCache(path string, flushEvery int) (*RequestsCache, error) {
@@ -61,10 +61,10 @@ func (c *RequestsCache) load() error {
 			)
 		}
 
-		reqID := binary.BigEndian.Uint32(buf[:cacheReqIDLen])
-		tag := binary.BigEndian.Uint32(buf[cacheReqIDLen:])
+		lclReqID := binary.BigEndian.Uint32(buf[:cacheLCLReqIDLen])
+		tag := binary.BigEndian.Uint32(buf[cacheLCLReqIDLen:])
 
-		c.entries[reqID] = tag
+		c.entries[lclReqID] = tag
 	}
 
 	if completeSize != size {
@@ -85,16 +85,16 @@ func (c *RequestsCache) load() error {
 
 // Put only appends entries added since the last flush: rewriting the
 // whole map every time made the file grow quadratically. load keeps the
-// last slot per req_id, so a repeated req_id is harmless.
-func (c *RequestsCache) Put(reqID uint32, tag uint32, flush bool) error {
+// last slot per lcl_req_id, so a repeated lcl_req_id is harmless.
+func (c *RequestsCache) Put(lclReqID uint32, tag uint32, flush bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.entries[reqID] = tag
+	c.entries[lclReqID] = tag
 
 	var slot [cacheEntryLen]byte
-	binary.BigEndian.PutUint32(slot[:cacheReqIDLen], reqID)
-	binary.BigEndian.PutUint32(slot[cacheReqIDLen:], tag)
+	binary.BigEndian.PutUint32(slot[:cacheLCLReqIDLen], lclReqID)
+	binary.BigEndian.PutUint32(slot[cacheLCLReqIDLen:], tag)
 	c.unflushed = append(c.unflushed, slot[:]...)
 
 	if !flush {
@@ -107,11 +107,11 @@ func (c *RequestsCache) Put(reqID uint32, tag uint32, flush bool) error {
 	return c.file.Sync()
 }
 
-func (c *RequestsCache) GetTag(reqID uint32) (uint32, bool) {
+func (c *RequestsCache) GetTag(lclReqID uint32) (uint32, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	tag, ok := c.entries[reqID]
+	tag, ok := c.entries[lclReqID]
 	return tag, ok
 }
 

@@ -3,8 +3,8 @@ package protocol
 import "fmt"
 
 const (
-	symlinkRequestMinSize = RequestIDLen + 3
-	symlinkRequestMaxSize = RequestIDLen + 8192
+	symlinkRequestMinSize = SenderReqIDLen + 3
+	symlinkRequestMaxSize = SenderReqIDLen + 8192
 )
 
 // PayloadLength validates the length announced by the header before any

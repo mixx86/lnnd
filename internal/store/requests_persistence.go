@@ -35,9 +35,9 @@ func (w *RequestsWriter) persistRequests(
 	batch []queues.PendingRequest,
 	s *sched.Service,
 ) error {
-	reqIDs := make([]uint32, len(batch))
+	lclReqIDs := make([]uint32, len(batch))
 	for i := range batch {
-		reqIDs[i] = w.reqFile.nextReqID()
+		lclReqIDs[i] = w.reqFile.nextLCLReqID()
 	}
 
 	/* The cache does not take a write turn (for now?):
@@ -57,7 +57,8 @@ func (w *RequestsWriter) persistRequests(
 				continue
 			}
 			flush := idx == lastIdx
-			if err := w.reqCache.Put(reqIDs[idx], pr.Tag, flush); err != nil {
+			err := w.reqCache.Put(lclReqIDs[idx], pr.Tag, flush)
+			if err != nil {
 				return
 			}
 		}
@@ -79,11 +80,11 @@ func (w *RequestsWriter) persistRequests(
 		w.reqFile.file,
 		&w.batchBuf,
 		batch,
-		reqIDs,
+		lclReqIDs,
 		opRequest,
 	)
 	if err != nil {
-		notifyWriteResult(batch, reqIDs, err)
+		notifyWriteResult(batch, lclReqIDs, err)
 		return err
 	}
 
@@ -102,12 +103,12 @@ func (w *RequestsWriter) persistRequests(
 			logger.Daemon.Printf("rolling back failed batch: %v", rerr)
 		}
 		s.ReleaseWriteTurn(wturn, 0)
-		notifyWriteResult(batch, reqIDs, err)
+		notifyWriteResult(batch, lclReqIDs, err)
 		return err
 	}
 	s.ReleaseWriteTurn(wturn, written)
 
-	notifyWriteResult(batch, reqIDs, nil)
+	notifyWriteResult(batch, lclReqIDs, nil)
 	return nil
 }
 
@@ -159,7 +160,7 @@ func (r *RequestsFile) writeBatch(
 	f *os.File,
 	buf io.Writer,
 	batch []queues.PendingRequest,
-	reqIDs []uint32,
+	lclReqIDs []uint32,
 	op opKind,
 ) error {
 	for idx, pr := range batch {
@@ -168,17 +169,17 @@ func (r *RequestsFile) writeBatch(
 		switch op {
 		case opRequest:
 			payload := pr.Req.Encode()
-			// The payload's leading req_id is the sender's. A request of
-			// ours keeps rmt_req_id 0, which is what marks it as ours: its
-			// id is the entry's own req_id, not yet assigned when the
-			// request was encoded.
+			// The payload's leading sender_req_id is the peer's id. A
+			// request of ours keeps rmt_req_id 0, which is what marks it as
+			// ours: its id is the entry's own lcl_req_id, not yet assigned
+			// when the request was encoded.
 			var rmtReqID uint32
 			if !pr.Sent {
 				rmtReqID = binary.BigEndian.Uint32(
-					payload[:protocol.RequestIDLen],
+					payload[:protocol.SenderReqIDLen],
 				)
 			}
-			reqPaths := payload[protocol.RequestIDLen:]
+			reqPaths := payload[protocol.SenderReqIDLen:]
 
 			req := make([]byte, requestStaticFieldsLen+len(reqPaths))
 
@@ -194,10 +195,10 @@ func (r *RequestsFile) writeBatch(
 			offset += requestPeerUUIDLen
 
 			binary.BigEndian.PutUint32(
-				req[offset:offset+requestIDLen],
-				reqIDs[idx],
+				req[offset:offset+requestLCLReqIDLen],
+				lclReqIDs[idx],
 			)
-			offset += requestIDLen
+			offset += requestLCLReqIDLen
 
 			binary.BigEndian.PutUint32(
 				req[offset:offset+requestRMTReqIDLen],
@@ -217,7 +218,7 @@ func (r *RequestsFile) writeBatch(
 
 		case opAccepted, opRejected:
 			if res, ok := pr.Req.(protocol.Resolution); ok {
-				fieldsBuf := make([]byte, requestIDLen)
+				fieldsBuf := make([]byte, requestLCLReqIDLen)
 				binary.BigEndian.PutUint32(fieldsBuf, res.LCLReqID)
 				fields = fieldsBuf
 			} else {
@@ -335,13 +336,13 @@ func (r *RequestsFile) checkpoint(
 
 func notifyWriteResult(
 	batch []queues.PendingRequest,
-	reqIDs []uint32,
+	lclReqIDs []uint32,
 	err error,
 ) {
 	for idx, pr := range batch {
 		res := queues.WriteResult{Err: err}
 		if err == nil {
-			res.ReqID = reqIDs[idx]
+			res.LCLReqID = lclReqIDs[idx]
 		}
 		pr.Written <- res
 	}

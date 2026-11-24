@@ -14,8 +14,8 @@ func TestRequestsCacheAppendsOnlyNewEntries(t *testing.T) {
 	}
 
 	puts := []struct {
-		reqID, tag uint32
-		flush      bool
+		lclReqID, tag uint32
+		flush         bool
 	}{
 		{1, 10, false},
 		{2, 20, true},
@@ -24,7 +24,7 @@ func TestRequestsCacheAppendsOnlyNewEntries(t *testing.T) {
 		{5, 50, true},
 	}
 	for _, p := range puts {
-		if err := c.Put(p.reqID, p.tag, p.flush); err != nil {
+		if err := c.Put(p.lclReqID, p.tag, p.flush); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,9 +47,9 @@ func TestRequestsCacheAppendsOnlyNewEntries(t *testing.T) {
 	}
 	defer c.Close()
 	for _, p := range puts {
-		if tag, ok := c.GetTag(p.reqID); !ok || tag != p.tag {
+		if tag, ok := c.GetTag(p.lclReqID); !ok || tag != p.tag {
 			t.Fatalf("req %d: got tag %d ok=%v, want %d",
-				p.reqID, tag, ok, p.tag)
+				p.lclReqID, tag, ok, p.tag)
 		}
 	}
 }

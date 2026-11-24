@@ -167,10 +167,10 @@ When an authenticated peer sends a request (`SYMLINK_REQUEST`, for example):
 `internal/queues` holds the in-memory hand-off between the components that receive work and the writers that persist it.
 
 - **`RequestsQueue`** — bounded channel of `PendingRequest`, for the requests to log: those peers send and those lnnd sends. Capacity comes from `LNND_REQ_QUEUE_SIZE` (default 4096). Supports non-blocking and timed enqueue, and blocking / non-blocking dequeue.
-- **`PendingRequest`** — `{Peer, Req, Written, EnqueuedAt, Tag, Sent}`. It is transient: it exists only until the writer reports the persistence result, with the `req_id` it assigned, on `Written`. The on-disk file is the source of truth afterwards.
+- **`PendingRequest`** — `{Peer, Req, Written, EnqueuedAt, Tag, Sent}`. It is transient: it exists only until the writer reports the persistence result, with the `lcl_req_id` it assigned, on `Written`. The on-disk file is the source of truth afterwards.
 - **`FilesQueue`** — placeholder for file transfers.
 
-The scheduler puts work in and takes it out: `SubmitRequest` waits up to 2 s for the queue's backpressure to clear (and otherwise fails with `ErrOverloaded`), enqueues the request, adds its size to the queue's queued bytes and waits for the writer's result; `SubmitSentRequest` does the same for a request of ours and returns its `req_id`; `NextRequest` / `TryNextRequest` hand queued requests to the writer and subtract their size.
+The scheduler puts work in and takes it out: `SubmitRequest` waits up to 2 s for the queue's backpressure to clear (and otherwise fails with `ErrOverloaded`), enqueues the request, adds its size to the queue's queued bytes and waits for the writer's result; `SubmitSentRequest` does the same for a request of ours and returns its `lcl_req_id`; `NextRequest` / `TryNextRequest` hand queued requests to the writer and subtract their size.
 
 **Timeouts** (`sched/config.go`): enqueue 100 ms, write confirmation 10 s, pressure wait 2 s.
 
@@ -182,7 +182,7 @@ The scheduler puts work in and takes it out: `SubmitRequest` waits up to 2 s for
 
 ```
 ┌──────────────── file header (16 B) ────────────────┐
-│ magic "LNNR" (4) │ lco (8) │ current_req_id (4)    │
+│ magic "LNNR" (4) │ lco (8) │ current_lcl_req_id (4)│
 ├────────────────────────────────────────────────────┤
 │ initial checkpoint                                 │
 │ entry … entry │ checkpoint │ entry … │ checkpoint  │
@@ -190,33 +190,33 @@ The scheduler puts work in and takes it out: `SubmitRequest` waits up to 2 s for
 ```
 
 - `lco` — *last checkpoint offset*, the offset of the most recent checkpoint entry.
-- `current_req_id` — persisted counter used to assign local request ids.
+- `current_lcl_req_id` — persisted counter used to assign local request ids.
 
 Every entry starts with `[entry_length:4][op:1]`:
 
 | Op | Name          | Payload                                                                         |
 |----|---------------|---------------------------------------------------------------------------------|
-| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8][payload]` — a request a peer sent or one lnnd sends, logged before it is sent; `peer_uuid` is the other side; `rmt_req_id` is the peer's id for a request it sent, taken from the payload, and `0` for one of ours; `payload` is the request's wire payload without its leading `req_id`, decoded according to `req_type` (for example, the [`SYMLINK_REQUEST` payload](protocol.md#message-types)) |
-| 1  | `ACCEPTED`    | `[req_id:4]`                                                                    |
-| 2  | `REJECTED`    | `[req_id:4]`                                                                    |
+| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][lcl_req_id:4][rmt_req_id:4][unix_ts:8][payload]` — a request a peer sent or one lnnd sends, logged before it is sent; `peer_uuid` is the other side; `rmt_req_id` is the peer's id for a request it sent, taken from the payload, and `0` for one of ours; `payload` is the request's wire payload without its leading `sender_req_id`, decoded according to `req_type` (for example, the [`SYMLINK_REQUEST` payload](protocol.md#message-types)) |
+| 1  | `ACCEPTED`    | `[lcl_req_id:4]`                                                                |
+| 2  | `REJECTED`    | `[lcl_req_id:4]`                                                                |
 | 3  | `CHECKPOINT`  | `[checksum:4]` — byte-sum of all entries since the previous checkpoint          |
 
-`rmt_req_id` is the only thing that tells the two directions apart: a peer's id is never `0`, since a request carrying it is [rejected on receipt](protocol.md#message-types). The payload leaves out the leading `req_id` because the entry already holds it: it is `rmt_req_id` in a request a peer sent, and the entry's own `req_id` in one of ours, which is logged before that id is assigned. Putting it back in front of `payload` gives the exact wire payload.
+`rmt_req_id` is the only thing that tells the two directions apart: a peer's id is never `0`, since a request carrying it is [rejected on receipt](protocol.md#message-types). The payload leaves out the leading `sender_req_id` because the entry already holds it: it is `rmt_req_id` in a request a peer sent, and the entry's own `lcl_req_id` in one of ours, which is logged before that id is assigned. Putting it back in front of `payload` gives the exact wire payload.
 
 **Write path** (`persistRequests`):
 
-1. Assign a local `req_id` to every request in the batch.
-2. Record `req_id → tag` in the requests cache for the requests peers sent (in the background); a sent request's tag belongs to the outbox.
+1. Assign a `lcl_req_id` to every request in the batch.
+2. Record `lcl_req_id → tag` in the requests cache for the requests peers sent (in the background); a sent request's tag belongs to the outbox.
 3. Serialize the batch into a buffer.
 4. Wait for a write turn from the scheduler.
 5. Flush + `fsync` the entries.
 6. Append a checkpoint covering the batch; flush + `fsync`.
 7. Update `lco` in the header; `fsync`.
-8. Report the result, with the assigned `req_id`, on each request's `Written` channel.
+8. Report the result, with the assigned `lcl_req_id`, on each request's `Written` channel.
 
 #### Requests cache (`requests.cache`)
 
-Fixed 8-byte slots: `[req_id:4][tag:4]`. It maps each local request id to the tag of the wire message that carried it.
+Fixed 8-byte slots: `[lcl_req_id:4][tag:4]`. It maps each local request id to the tag of the wire message that carried it.
 
 The tag is what lets the daemon re-establish a conversation after a crash: if a request entry survives but the exchange with the peer was interrupted, the daemon sends a `RECOVER_REQUEST` carrying that tag so the peer knows which request is meant. The peer's own request id (`rmt_req_id`) is deliberately not used to identify a request in recovery — after a crash there is no reliable way to know whether it is consistent, up to date, or even exists. `rmt_req_id` is only used to tell the peer whether a request was accepted or rejected.
 
@@ -226,7 +226,7 @@ The tag is what lets the daemon re-establish a conversation after a crash: if a 
 2. **Validation** (`Run` → `checkEntries`): the daemon validates either the tail written after the last checkpoint (entry framing) or, if the file ends at a checkpoint, the region that checkpoint closes (framing + checksum).
 3. **Outcome:**
    - *Valid* — nothing to do.
-   - *Damaged but recoverable* (a request entry, possibly cut short at the end of the file, still has its peer UUID, request id and a non-zero `rmt_req_id`; one of ours, with `rmt_req_id` 0, never is, since there is nothing to ask the peer for) — each request's tag is looked up in the cache and the `(peer, req_id, tag)` triple is added to the [pending recoveries](#pending-recoveries). Then the damaged region is truncated as below. See [protocol.md](protocol.md#recovery) for how entries are resolved.
+   - *Damaged but recoverable* (a request entry, possibly cut short at the end of the file, still has its peer UUID, `lcl_req_id` and a non-zero `rmt_req_id`; one of ours, with `rmt_req_id` 0, never is, since there is nothing to ask the peer for) — each request's tag is looked up in the cache and the `(peer, lcl_req_id, tag)` triple is added to the [pending recoveries](#pending-recoveries). Then the damaged region is truncated as below. See [protocol.md](protocol.md#recovery) for how entries are resolved.
    - *Damaged* — `removeTail` truncates everything after the last valid checkpoint; if that checkpoint is itself corrupt, the file is rolled back to the previous one.
 
    A file that only holds the initial checkpoint is valid.

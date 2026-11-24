@@ -16,8 +16,8 @@ func TestPendingSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := p.Add(
-		Entry{Peer: peer, ReqID: 1, Tag: 10},
-		Entry{Peer: peer, ReqID: 2, Tag: 20},
+		Entry{Peer: peer, LCLReqID: 1, Tag: 10},
+		Entry{Peer: peer, LCLReqID: 2, Tag: 20},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestPendingSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := p.ForPeer(peer)
-	if len(got) != 1 || got[0] != (Entry{Peer: peer, ReqID: 2, Tag: 20}) {
+	if len(got) != 1 || got[0] != (Entry{Peer: peer, LCLReqID: 2, Tag: 20}) {
 		t.Fatalf("after reopen got %+v", got)
 	}
 }

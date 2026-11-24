@@ -43,8 +43,8 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 
 	from := peer.NewRemoteNode(uuid.New(), nil)
 	reqs := []protocol.SymlinkRequest{
-		{ReqID: 7, Src: "/srv/a"},
-		{ReqID: 8, Src: "/srv/b", Dst: "/home/user/b"},
+		{SenderReqID: 7, Src: "/srv/a"},
+		{SenderReqID: 8, Src: "/srv/b", Dst: "/home/user/b"},
 	}
 	// One at a time, so each request is committed under its own
 	// checkpoint and the second checkpoint has to chain onto the first.
@@ -59,7 +59,7 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, req := range reqs {
-		if !bytes.Contains(before, req.Encode()[protocol.RequestIDLen:]) {
+		if !bytes.Contains(before, req.Encode()[protocol.SenderReqIDLen:]) {
 			t.Fatalf("acknowledged request %+v is not in the WAL", req)
 		}
 	}
@@ -81,7 +81,7 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 	if owed := pending.ForPeer(from.ID); len(owed) != 0 {
 		t.Fatalf("acknowledged requests treated as lost: %+v", owed)
 	}
-	id, err := restarted.reqFile.getReqID()
+	id, err := restarted.reqFile.getLCLReqID()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestAcknowledgedRequestsSurviveRestart(t *testing.T) {
 }
 
 type walRequest struct {
-	reqID    uint32
+	lclReqID uint32
 	rmtReqID uint32
 	payload  []byte
 }
@@ -100,7 +100,7 @@ type walRequest struct {
 // requestEntries decodes the request entries of a WAL by the layout in
 // docs/architecture.md, not by the writer's code: header (16 B), then
 // [entry_length:4][op:1] and, for requests,
-// [req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8][payload].
+// [req_type:2][peer_uuid:16][lcl_req_id:4][rmt_req_id:4][unix_ts:8][payload].
 func requestEntries(t *testing.T, wal []byte) []walRequest {
 	t.Helper()
 	var entries []walRequest
@@ -112,7 +112,7 @@ func requestEntries(t *testing.T, wal []byte) []walRequest {
 		if opKind(wal[off+4]) == opRequest {
 			fields := wal[off+5 : off+n]
 			entries = append(entries, walRequest{
-				reqID:    binary.BigEndian.Uint32(fields[18:]),
+				lclReqID: binary.BigEndian.Uint32(fields[18:]),
 				rmtReqID: binary.BigEndian.Uint32(fields[22:]),
 				payload:  fields[34:],
 			})
@@ -125,7 +125,7 @@ func requestEntries(t *testing.T, wal []byte) []walRequest {
 // A request of ours shares the log with the ones peers send, and only
 // rmt_req_id tells them apart. Each entry must keep the sender's id where a
 // RESOLUTION will look for it: the peer's id in rmt_req_id for a request it
-// sent, the entry's own req_id for ours, whose rmt_req_id stays 0.
+// sent, the entry's own lcl_req_id for ours, whose rmt_req_id stays 0.
 func TestSentRequestSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "requests")
@@ -135,17 +135,17 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	go w.Run(s)
 
 	remote := peer.NewRemoteNode(uuid.New(), nil)
-	received := protocol.SymlinkRequest{ReqID: 5, Src: "/srv/received"}
+	received := protocol.SymlinkRequest{SenderReqID: 5, Src: "/srv/received"}
 	if err := s.SubmitRequest(remote, received, 1); err != nil {
 		t.Fatal(err)
 	}
 	sent := protocol.SymlinkRequest{Src: "/srv/sent", Dst: "/home/peer/l"}
-	reqID, err := s.SubmitSentRequest(remote, sent)
+	lclReqID, err := s.SubmitSentRequest(remote, sent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reqID != 2 {
-		t.Fatalf("sent request got req_id %d, want 2", reqID)
+	if lclReqID != 2 {
+		t.Fatalf("sent request got lcl_req_id %d, want 2", lclReqID)
 	}
 
 	before, err := os.ReadFile(path)
@@ -155,14 +155,14 @@ func TestSentRequestSurvivesRestart(t *testing.T) {
 	got := requestEntries(t, before)
 	want := []walRequest{
 		{
-			reqID:    1,
+			lclReqID: 1,
 			rmtReqID: 5,
-			payload:  received.Encode()[protocol.RequestIDLen:],
+			payload:  received.Encode()[protocol.SenderReqIDLen:],
 		},
 		{
-			reqID:    2,
+			lclReqID: 2,
 			rmtReqID: 0,
-			payload:  sent.Encode()[protocol.RequestIDLen:],
+			payload:  sent.Encode()[protocol.SenderReqIDLen:],
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
