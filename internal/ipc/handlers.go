@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"path"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,41 +33,25 @@ func ValidateMessage(h *Header, id *uuid.UUID) error {
 	return nil
 }
 
-// An unknown op passes: HandleRequest answers it with ErrUnknownOp, which
-// tells the client more than a failed check of fields the op may not have.
 func ValidateRequest(req *Request) error {
-	switch req.Op {
-	case "send":
-		switch req.Kind {
-		case "symlink", "hardlink":
-			return validateLink(req)
-		default:
-			return fmt.Errorf("unknown kind: %q", req.Kind)
-		}
+	if req.IP == "" {
+		return errors.New("you must include the peer's IP")
+	}
+	if net.ParseIP(req.IP) == nil {
+		return errors.New("invalid IP address")
 	}
 	return nil
 }
 
-// validateLink mutates req: IP is split out of Src and Src keeps only the
-// cleaned absolute path, so callers must not validate twice.
-func validateLink(req *Request) error {
+// ValidateLinkRequest mutates req: Src is cleaned and made absolute.
+func ValidateLinkRequest(req *LinkRequest) error {
+	if err := ValidateRequest(&req.Request); err != nil {
+		return err
+	}
 	if req.Src == "" {
 		return errors.New("you must include a source path")
 	}
-	if !strings.Contains(req.Src, "://") {
-		return errors.New("expected IP")
-	}
-	parts := strings.SplitN(req.Src, "://", 2)
-	cleanPath := path.Clean("/" + parts[1])
-
-	ip := net.ParseIP(parts[0])
-	if ip == nil {
-		return errors.New("invalid IP address")
-	}
-	req.IP = parts[0]
-
-	req.Src = cleanPath
-
+	req.Src = path.Clean("/" + req.Src)
 	return nil
 }
 
@@ -123,59 +106,69 @@ func HandleMessage(
 	srv *network.Server,
 ) {
 	switch m := msg.(type) {
-	case *Request:
-		if err := ValidateRequest(m); err != nil {
+	case *LinkRequest:
+		if err := ValidateLinkRequest(m); err != nil {
 			log.Printf("validation error: %v", err)
 			SendErr(conn, ErrInvalidRequest, err)
 			return
 		}
-		HandleRequest(m, id, conn, s, srv)
+		HandleLinkRequest(m, id, conn, s, srv)
+	case *Request:
+		HandleRequest(m, conn)
 	}
 }
 
-func HandleRequest(
-	req *Request,
+// HandleRequest only gets the requests that ParseMessage found no struct
+// for, so all it can do is tell the client what it did not recognize.
+func HandleRequest(req *Request, conn net.Conn) {
+	if req.Op == "send" {
+		log.Printf("unknown kind: %v", req.Kind)
+		SendErr(
+			conn,
+			ErrInvalidRequest,
+			fmt.Errorf("unknown kind: %v", req.Kind),
+		)
+		return
+	}
+	log.Printf("unknown operation: %v", req.Op)
+	SendErr(conn, ErrUnknownOp, fmt.Errorf("unknown operation: %v", req.Op))
+}
+
+func HandleLinkRequest(
+	req *LinkRequest,
 	id uuid.UUID,
 	conn net.Conn,
 	s app.Services,
 	srv *network.Server,
 ) {
-	switch req.Op {
-	case "send":
-		switch req.Kind {
-		case "symlink":
-			ctx, cancel := context.WithTimeout(
-				context.Background(),
-				5*time.Second,
-			)
-			defer cancel()
+	switch req.Kind {
+	case "symlink":
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+		defer cancel()
 
-			sess, err := srv.SessionFor(ctx, id, req.IP)
-			if err != nil {
-				SendErr(conn, ErrPeerUnreachable, err)
-				return
-			}
-			reply, err := srv.RoundTrip(ctx, sess, protocol.SymlinkRequest{
-				Src: req.Src,
-				Dst: req.Dst,
-			})
-
-			if err != nil {
-				SendErr(conn, ErrNoReply, err)
-				return
-			}
-			if e, ok := reply.(protocol.Error); ok {
-				SendErr(conn, ErrPeer, e)
-				return
-			}
-			SendOk(conn)
-
+		sess, err := srv.SessionFor(ctx, id, req.IP)
+		if err != nil {
+			SendErr(conn, ErrPeerUnreachable, err)
 			return
-		case "hardlink":
-			log.Printf("Kind: %v.\n", req.Kind)
 		}
-	default:
-		log.Printf("unknown operation: %v", req.Op)
-		SendErr(conn, ErrUnknownOp, fmt.Errorf("unknown operation: %v", req.Op))
+		reply, err := srv.RoundTrip(ctx, sess, protocol.SymlinkRequest{
+			Src: req.Src,
+			Dst: req.Dst,
+		})
+
+		if err != nil {
+			SendErr(conn, ErrNoReply, err)
+			return
+		}
+		if e, ok := reply.(protocol.Error); ok {
+			SendErr(conn, ErrPeer, e)
+			return
+		}
+		SendOk(conn)
+	case "hardlink":
+		log.Printf("Kind: %v.\n", req.Kind)
 	}
 }

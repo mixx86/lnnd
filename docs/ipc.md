@@ -2,29 +2,66 @@
 
 This is the interface between the [`lnn`](https://github.com/mixx86/lnn) CLI and lnnd. lnnd is the server; any client that follows this contract can drive it.
 
-The CLI talks to the daemon over a Unix socket (path set by `LNND_IPC_SOCKET`). Each connection carries exactly one exchange: the client sends one JSON object and **half-closes its write side** (the daemon reads until EOF), then reads one JSON response.
+The CLI talks to the daemon over a Unix socket (path set by `LNND_IPC_SOCKET`). Each connection carries exactly one exchange: the client sends one JSON message and **half-closes its write side** (the daemon reads until EOF), then reads one JSON response. The message may be at most 100 KiB (102400 bytes) and must be complete within 2 s of connecting.
 
-Request:
+## Messages
 
-```json
-{ "op": "link", "type": "symreq", "src": "192.168.1.34://path/to/file", "dst": "./local_link" }
-```
+Every message carries these fields; the rest depend on its `type`.
 
 | Field  | Meaning |
 |--------|---------|
-| `op`   | Operation. Currently `link`. |
-| `type` | `symreq` — ask a peer to create a symlink. `hard` is not implemented yet. |
-| `src`  | `<ip>://<path>`. The IP must parse; the path is cleaned and made absolute. |
-| `dst`  | Destination path (optional). |
-| `uuid` | The peer's UUID (optional). If it names a peer with an open session, the daemon sends over that session instead of dialing `<ip>`. |
+| `type` | Message type. Currently `request`. |
+| `op`   | Operation, required. Which ops exist depends on the type. |
+| `uuid` | A peer's UUID (optional). Must parse when present. |
 
-Response:
+### Requests (`"type": "request"`)
+
+A request is something a peer is asked to do. Fields common to every request:
+
+| Field  | Meaning |
+|--------|---------|
+| `kind` | What is asked, for `send` (see the table below). |
+| `ip`   | The peer's IP address, required by `send`. Hostnames are not accepted. |
+
+Ops: `send` asks the peer named by `ip` (or by `uuid`, see below) for a request of the given `kind`.
+
+| Kind       | Fields         | Status |
+|------------|----------------|--------|
+| `symlink`  | `src`, `dst`   | Sent to the peer as a [`SYMLINK_REQUEST`](protocol.md#message-types). |
+| `hardlink` | `src`, `dst`   | Validated but not implemented: the daemon closes the connection without a response. |
+
+Link fields:
+
+| Field | Meaning |
+|-------|---------|
+| `src` | Path on the peer, required. It is cleaned and made absolute; a relative path is taken from `/`. |
+| `dst` | Destination path on the peer's machine (optional). The peer rejects a relative `dst`, which the client sees as `ErrPeer`. |
 
 ```json
-{ "ok": true }
-{ "ok": false, "err": "unsupported transport: quic" }
+{ "type": "request", "op": "send", "kind": "symlink", "ip": "192.168.1.34", "src": "/path/to/file", "dst": "/home/me/link" }
 ```
 
-An invalid request (bad `src` or `uuid`) gets `ok: false` with the reason.
+To send, the daemon reuses the session of the peer named by `uuid` if one is open, and otherwise dials `ip` and runs the outbound handshake. It puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox), sends it and waits for the peer's answer; the whole exchange with the peer, dialing included, has 5 s. Code `0` means the peer answered `OK`: it stored the request durably and the request is pending, not accepted (see [the inbound request lifecycle](architecture.md#inbound-request-lifecycle)).
 
-For a `symreq`, the daemon reuses the peer's session or dials the peer and runs the outbound handshake, puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox) and sends it, then reports `ok: true`. `ok: true` means the frame was written to the connection, not that the peer stored or accepted it.
+## Response
+
+```json
+{ "code": 0 }
+{ "code": 8, "err": "invalid message" }
+```
+
+`code` is always present and is what a client should act on; `0` means success. `err` is present only on failure and is a human-readable reason, not meant to be matched.
+
+| Code | Name                 | Sent when |
+|------|----------------------|-----------|
+| `0`  | `OK`                 | The operation succeeded. |
+| `1`  | `ErrInvalidMessage`  | The message is not valid JSON, has no `op`, or has a `uuid` that does not parse. |
+| `2`  | `ErrMessageTooLarge` | The message exceeds 100 KiB. |
+| `3`  | `ErrInvalidRequest`  | A request field fails validation (`ip`, `src`), or `kind` is unknown. |
+| `4`  | `ErrUnknownOp`       | The `op` is unknown for the message type. |
+| `5`  | `ErrUnknownType`     | `type` is missing or unknown. |
+| `6`  | `ErrPeerUnreachable` | There is no session with the peer and none could be opened. Nothing was sent. |
+| `7`  | `ErrNoReply`         | Sending failed or the peer did not answer in time. Whether the peer stored the request is unknown. |
+| `8`  | `ErrPeer`            | The peer answered `ERROR`; `err` carries the peer's message. |
+| `9`  | `ErrInternal`        | Reserved; not sent today. |
+| `10` | `ErrTimeout`         | The message could not be read, usually because the client did not half-close within 2 s. |
