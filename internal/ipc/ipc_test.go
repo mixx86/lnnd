@@ -1,31 +1,40 @@
 package ipc
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
+	app "lnn/internal"
+	"net"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
-func parseRequest(t *testing.T, data []byte) *Request {
+func parseLinkRequest(t *testing.T, data []byte) *LinkRequest {
 	t.Helper()
 	msg, err := ParseMessage(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	req, ok := msg.(*Request)
+	req, ok := msg.(*LinkRequest)
 	if !ok {
-		t.Fatalf("got %T, want *Request", msg)
+		t.Fatalf("got %T, want *LinkRequest", msg)
 	}
 	return req
 }
 
-func sendSymlink(src string) *Request {
-	return &Request{Header: Header{Op: "send"}, Kind: "symlink", Src: src}
+func sendSymlink(ip, src string) *LinkRequest {
+	return &LinkRequest{
+		Request: Request{Header: Header{Op: "send"}, Kind: "symlink", IP: ip},
+		Src:     src,
+	}
 }
 
 func TestParseMessage_valid(t *testing.T) {
-	req := parseRequest(t, []byte(
+	req := parseLinkRequest(t, []byte(
 		`{"type":"request","op":"send","kind":"symlink",`+
-			`"src":"192.168.1.34://path/to/file","dst":"./link"}`,
+			`"ip":"192.168.1.34","src":"path/to/file","dst":"./link"}`,
 	))
 	if req.Op != "send" {
 		t.Errorf("Op: got %q, want %q", req.Op, "send")
@@ -33,28 +42,16 @@ func TestParseMessage_valid(t *testing.T) {
 	if req.Kind != "symlink" {
 		t.Errorf("Kind: got %q, want %q", req.Kind, "symlink")
 	}
+	if req.IP != "192.168.1.34" {
+		t.Errorf("IP: got %q, want %q", req.IP, "192.168.1.34")
+	}
 	// ParseMessage only deserializes; Src stays untouched until
-	// ValidateRequest runs.
-	if req.Src != "192.168.1.34://path/to/file" {
-		t.Errorf("Src: got %q, want %q", req.Src, "192.168.1.34://path/to/file")
+	// ValidateLinkRequest runs.
+	if req.Src != "path/to/file" {
+		t.Errorf("Src: got %q, want %q", req.Src, "path/to/file")
 	}
 	if req.Dst != "./link" {
 		t.Errorf("Dst: got %q, want %q", req.Dst, "./link")
-	}
-	if req.IP != "" {
-		t.Errorf("IP: got %q, want it empty before ValidateRequest", req.IP)
-	}
-}
-
-func TestParseMessage_ignoresIPField(t *testing.T) {
-	// IP is derived by ValidateRequest; a client must not be able to set
-	// it directly.
-	req := parseRequest(t, []byte(
-		`{"type":"request","op":"send","kind":"symlink",`+
-			`"src":"192.168.1.34://f","ip":"10.0.0.1"}`,
-	))
-	if req.IP != "" {
-		t.Errorf("IP: got %q, want it ignored", req.IP)
 	}
 }
 
@@ -79,23 +76,62 @@ func TestParseMessage_unknownType(t *testing.T) {
 	}
 }
 
-// A kind that passed validation would reach HandleRequest, which has no
-// case for it and would close the connection without an answer.
-func TestValidate_unknownKind(t *testing.T) {
-	req := sendSymlink("192.168.1.34://path/to/file")
-	req.Kind = "sym"
-	if err := ValidateRequest(req); err == nil {
-		t.Fatal("expected error for unknown kind")
+// A request that names no known op or kind must get an answer saying which
+// one is unknown, not a failed check of link fields it never meant to carry.
+func TestHandleMessage_unrecognizedRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want Code
+	}{
+		{
+			name: "unknown kind",
+			data: `{"type":"request","op":"send","kind":"sym"}`,
+			want: ErrInvalidRequest,
+		},
+		{
+			name: "unknown op with a link kind",
+			data: `{"type":"request","op":"accept","kind":"symlink"}`,
+			want: ErrUnknownOp,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, err := ParseMessage([]byte(tt.data))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			client, server := net.Pipe()
+			defer client.Close()
+			go func() {
+				HandleMessage(msg, uuid.UUID{}, server, app.Services{}, nil)
+				server.Close()
+			}()
+
+			data, err := io.ReadAll(client)
+			if err != nil {
+				t.Fatalf("reading the response: %v", err)
+			}
+			var res Response
+			if err := json.Unmarshal(data, &res); err != nil {
+				t.Fatalf("decoding response %q: %v", data, err)
+			}
+			if res.Code != tt.want {
+				t.Errorf(
+					"code: got %d, want %d (%s)",
+					res.Code,
+					tt.want,
+					res.Err,
+				)
+			}
+		})
 	}
 }
 
 func TestValidate_valid(t *testing.T) {
-	req := sendSymlink("192.168.1.34://path/to/file")
-	if err := ValidateRequest(req); err != nil {
+	req := sendSymlink("192.168.1.34", "path/to/file")
+	if err := ValidateLinkRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.IP != "192.168.1.34" {
-		t.Errorf("IP: got %q, want %q", req.IP, "192.168.1.34")
 	}
 	if req.Src != "/path/to/file" {
 		t.Errorf("Src: got %q, want %q", req.Src, "/path/to/file")
@@ -103,49 +139,43 @@ func TestValidate_valid(t *testing.T) {
 }
 
 func TestValidate_ipv6(t *testing.T) {
-	req := sendSymlink("::1://path/to/file")
-	if err := ValidateRequest(req); err != nil {
+	req := sendSymlink("::1", "/path/to/file")
+	if err := ValidateLinkRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.IP != "::1" {
-		t.Errorf("IP: got %q, want %q", req.IP, "::1")
-	}
-	if req.Src != "/path/to/file" {
-		t.Errorf("Src: got %q, want %q", req.Src, "/path/to/file")
 	}
 }
 
 func TestValidate_emptySrc(t *testing.T) {
-	req := sendSymlink("")
-	if err := ValidateRequest(req); err == nil {
+	req := sendSymlink("192.168.1.34", "")
+	if err := ValidateLinkRequest(req); err == nil {
 		t.Fatal("expected error for empty Src")
 	}
 }
 
-func TestValidate_missingScheme(t *testing.T) {
-	req := sendSymlink("192.168.1.34/path/to/file")
-	if err := ValidateRequest(req); err == nil {
-		t.Fatal("expected error for missing ://")
+func TestValidate_missingIP(t *testing.T) {
+	req := sendSymlink("", "/path/to/file")
+	if err := ValidateLinkRequest(req); err == nil {
+		t.Fatal("expected error for missing IP")
 	}
 }
 
 func TestValidate_invalidIP(t *testing.T) {
-	req := sendSymlink("notanip://path/to/file")
-	if err := ValidateRequest(req); err == nil {
+	req := sendSymlink("notanip", "/path/to/file")
+	if err := ValidateLinkRequest(req); err == nil {
 		t.Fatal("expected error for invalid IP")
 	}
 }
 
 func TestValidate_hostnameRejected(t *testing.T) {
-	req := sendSymlink("example.com://path/to/file")
-	if err := ValidateRequest(req); err == nil {
+	req := sendSymlink("example.com", "/path/to/file")
+	if err := ValidateLinkRequest(req); err == nil {
 		t.Fatal("expected error: only IP addresses are accepted, not hostnames")
 	}
 }
 
 func TestValidate_pathNormalized(t *testing.T) {
-	req := sendSymlink("192.168.1.34://path/../path/to/file")
-	if err := ValidateRequest(req); err != nil {
+	req := sendSymlink("192.168.1.34", "path/../path/to/file")
+	if err := ValidateLinkRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/path/to/file" {
@@ -158,22 +188,12 @@ func TestValidate_pathNormalized(t *testing.T) {
 }
 
 func TestValidate_pathCannotEscapeRoot(t *testing.T) {
-	req := sendSymlink("192.168.1.34://../../etc/passwd")
-	if err := ValidateRequest(req); err != nil {
+	req := sendSymlink("192.168.1.34", "../../etc/passwd")
+	if err := ValidateLinkRequest(req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if req.Src != "/etc/passwd" {
 		t.Errorf("path not rooted: got %q, want %q", req.Src, "/etc/passwd")
-	}
-}
-
-func TestValidate_emptyPathBecomesRoot(t *testing.T) {
-	req := sendSymlink("192.168.1.34://")
-	if err := ValidateRequest(req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.Src != "/" {
-		t.Errorf("Src: got %q, want %q", req.Src, "/")
 	}
 }
 
