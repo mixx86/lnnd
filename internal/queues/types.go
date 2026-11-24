@@ -25,6 +25,8 @@ type PendingRequest struct {
 	Written    chan error
 	EnqueuedAt uint64
 	Tag        uint32
+	// The peer's id for the request, 0 when the request is ours.
+	RMTReqID uint32
 }
 
 type RequestsQueue struct {

@@ -183,6 +183,12 @@ func (r *RequestsFile) writeBatch(
 			)
 			offset += requestIDLen
 
+			binary.BigEndian.PutUint32(
+				req[offset:offset+requestRMTReqIDLen],
+				pr.RMTReqID,
+			)
+			offset += requestRMTReqIDLen
+
 			binary.BigEndian.PutUint64(
 				req[offset:offset+requestUnixTSLen],
 				pr.EnqueuedAt,

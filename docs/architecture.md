@@ -196,10 +196,12 @@ Every entry starts with `[entry_length:4][op:1]`:
 
 | Op | Name          | Payload                                                                         |
 |----|---------------|---------------------------------------------------------------------------------|
-| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][req_id:4][unix_ts:8][payload]` — the request's wire payload as is, decoded according to `req_type` (for example, the [`SYMLINK_REQUEST` payload](protocol.md#message-types)) |
+| 0  | `REQUEST`     | `[req_type:2][peer_uuid:16][req_id:4][rmt_req_id:4][unix_ts:8][payload]` — `rmt_req_id` is the peer's id for the request, `0` when the request is ours; `payload` is the request's wire payload as is, decoded according to `req_type` (for example, the [`SYMLINK_REQUEST` payload](protocol.md#message-types)) |
 | 1  | `ACCEPTED`    | `[req_id:4]`                                                                    |
 | 2  | `REJECTED`    | `[req_id:4]`                                                                    |
 | 3  | `CHECKPOINT`  | `[checksum:4]` — byte-sum of all entries since the previous checkpoint          |
+
+`rmt_req_id` is written as `0` for now: the wire does not carry the peer's id yet, and the requests lnnd sends are not logged yet.
 
 **Write path** (`persistRequests`):
 

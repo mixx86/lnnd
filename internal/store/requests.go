@@ -50,10 +50,11 @@ const (
 	requestTypeLen     = 2
 	requestPeerUUIDLen = 16
 	requestIDLen       = 4
+	requestRMTReqIDLen = 4
 	requestUnixTSLen   = 8
 
 	requestStaticFieldsLen = requestTypeLen + requestPeerUUIDLen +
-		requestIDLen + requestUnixTSLen
+		requestIDLen + requestRMTReqIDLen + requestUnixTSLen
 
 	requestPeerUUIDOffset = entryHeaderLen + requestTypeLen
 	requestIDOffset       = requestPeerUUIDOffset + requestPeerUUIDLen
