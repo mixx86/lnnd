@@ -3,6 +3,7 @@ package ipc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	app "lnn/internal"
 	"lnn/internal/network"
@@ -16,9 +17,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// ValidateRequest mutates req: IP is split out of Src and Src keeps only the
+const maxMessageSize = 100 << 10
+
+// ValidateMessage mutates req: IP is split out of Src and Src keeps only the
 // cleaned absolute path, so callers must not validate twice.
-func ValidateRequest(req *Request, id *uuid.UUID) error {
+func ValidateMessage(req *Request, id *uuid.UUID) error {
 	if req.Src == "" {
 		return errors.New("you must include a source path")
 	}
@@ -54,36 +57,45 @@ func HandleConn(conn net.Conn, s app.Services, srv *network.Server) {
 			log.Printf("Error closing IPC connection: %v", err)
 		}
 	}()
-	data, err := io.ReadAll(conn)
+	err := conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	if err != nil {
-		log.Printf("Error receiving data from the peer: %v", err)
+		log.Printf("Error setting up the IPC connection deadline: %v", err)
 		return
 	}
-	req, err := ParseRequest(data)
+	data, err := io.ReadAll(io.LimitReader(conn, maxMessageSize+1))
+	if len(data) > maxMessageSize {
+		log.Printf("Error setting IPC read deadline: %v", err)
+		SendErr(conn, ErrMessageTooLarge, fmt.Errorf("message too large: limit is %d bytes", maxMessageSize))
+		return
+	}
+	if err != nil {
+		log.Printf("Error receiving data from the client: %v", err)
+		SendErr(conn, ErrTimeout, err)
+		return
+	}
+
+	msg, err := ParseMessage(data)
 	if err != nil {
 		log.Printf("Error deserializing json data: %v", err)
-		SendErr(conn, err)
+		SendErr(conn, ErrInvalidMessage, err)
 		return
 	}
-	HandleRequest(&req, conn, s, srv)
+	HandleMessage(&msg, conn, s, srv)
 }
 
-func HandleRequest(
+func HandleMessage(
 	req *Request,
-	unixConn net.Conn,
+	conn net.Conn,
 	s app.Services,
 	srv *network.Server,
 ) {
 	switch req.Op {
 	case "link":
 		id := uuid.UUID{}
-		err := ValidateRequest(req, &id)
+		err := ValidateMessage(req, &id)
 		if err != nil {
 			log.Printf("validation error: %v", err)
-			Send(unixConn, Response{
-				OK:  false,
-				Err: err.Error(),
-			})
+			SendErr(conn, ErrInvalidMessage, err)
 			return
 		}
 
@@ -97,7 +109,7 @@ func HandleRequest(
 
 			sess, err := srv.SessionFor(ctx, id, req.IP)
 			if err != nil {
-				SendErr(unixConn, err)
+				SendErr(conn, ErrPeerUnreachable, err)
 				return
 			}
 			reply, err := srv.RoundTrip(ctx, sess, protocol.SymlinkRequest{
@@ -106,22 +118,24 @@ func HandleRequest(
 			})
 
 			if err != nil {
-				SendErr(unixConn, err)
+				SendErr(conn, ErrNoReply, err)
 				return
 			}
 			if e, ok := reply.(protocol.Error); ok {
-				SendErr(unixConn, e)
+				SendErr(conn, ErrPeer, e)
 				return
 			}
-			Send(unixConn, Response{OK: true})
+			SendOk(conn)
 
 			return
 		case "hard":
 			log.Printf("Type: %v.\n", req.Type)
 		default:
 			log.Printf("unknown type: %v", req.Type)
+			SendErr(conn, ErrUnknownType, fmt.Errorf("unknown type: %v", req.Type))
 		}
 	default:
 		log.Printf("unknown operation: %v", req.Op)
+		SendErr(conn, ErrUnknownOp, fmt.Errorf("unknown operation: %v", req.Op))
 	}
 }

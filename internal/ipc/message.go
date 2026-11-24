@@ -4,6 +4,31 @@ import (
 	"encoding/json"
 )
 
+type Code int64
+
+const (
+	OK = iota
+	ErrInvalidMessage
+	ErrMessageTooLarge
+	ErrInvalidRequest
+	ErrUnknownOp
+	ErrUnknownType
+	ErrPeerUnreachable
+	ErrNoReply
+	ErrPeer
+	ErrInternal
+	ErrTimeout
+)
+
+type Response struct {
+	Code Code `json:"code"`
+	Err string `json:"err,omitempty"`
+}
+
+func (r Response) Encode() ([]byte, error) {
+	return json.Marshal(r)
+}
+
 type Request struct {
 	Op   string `json:"op"`
 	Type string `json:"type"`
@@ -13,16 +38,7 @@ type Request struct {
 	UUID string `json:"uuid"`
 }
 
-type Response struct {
-	OK  bool   `json:"ok"`
-	Err string `json:"err,omitempty"`
-}
-
-func (r Response) Encode() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func ParseRequest(data []byte) (Request, error) {
+func ParseMessage(data []byte) (Request, error) {
 	var req Request
 	err := json.Unmarshal(data, &req)
 	return req, err

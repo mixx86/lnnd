@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"fmt"
 	app "lnn/internal"
 	"lnn/internal/network"
 	"log"
@@ -16,19 +17,28 @@ func Send(conn net.Conn, res Response) (int, error) {
 	return conn.Write(bytes)
 }
 
-func SendErr(conn net.Conn, err error) {
-	Send(conn, Response{OK: false, Err: err.Error()})
+func SendErr(conn net.Conn, code Code, err error) {
+	Send(conn, Response{Code: code, Err: err.Error()})
+}
+
+func SendOk(conn net.Conn) {
+	Send(conn, Response{Code: OK, Err: ""})
 }
 
 func Listen(s app.Services, srv *network.Server) error {
 	path := os.Getenv("LNND_IPC_SOCKET")
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: could not remove socket file %s: %v", path, err)
+		return err
 	}
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		return err
 	}
+	if err := os.Chmod(path, 0600); err != nil {
+        ln.Close()
+    	return fmt.Errorf("restrict IPC socket permissions: %w", err)
+    }
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
