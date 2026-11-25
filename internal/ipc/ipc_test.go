@@ -91,7 +91,7 @@ func TestHandleMessage_unrecognizedRequest(t *testing.T) {
 		},
 		{
 			name: "unknown op with a link kind",
-			data: `{"type":"request","op":"accept","kind":"symlink"}`,
+			data: `{"type":"request","op":"link","kind":"symlink"}`,
 			want: ErrUnknownOp,
 		},
 	}
