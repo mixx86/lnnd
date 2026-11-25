@@ -130,16 +130,16 @@ After every handshake, inbound or outbound, the receiver sends one `RECOVER_REQU
 
 ## Session states
 
+A session exists only once the handshake has succeeded: the handshake runs on the bare connection, before there is a session, so it has no state of its own.
+
 ```
-StateNew ──► StateHandshake ──► StateVerified ──► StateClosing
+StateVerified ──► StateClosing
 ```
 
-| State            | Description                        |
-|------------------|------------------------------------|
-| `StateNew`       | Connection just opened             |
-| `StateHandshake` | HELLO / CHALLENGE in progress      |
-| `StateVerified`  | Authentication complete, ready     |
-| `StateClosing`   | Tearing down connection            |
+| State           | Description |
+|-----------------|-------------|
+| `StateVerified` | Set by `peer.NewSession` when the handshake ends; frames can be sent |
+| `StateClosing`  | Set when the session shuts down; `SendFrame` refuses with `ErrSessionClosed` |
 
 ## Transports
 
