@@ -74,7 +74,7 @@ Runtime state lives in `~/.lnn/`: the node identity (UUID + Ed25519 keys, genera
 | Write scheduler + adaptive weights           | Done        |
 | Write scheduler budgets and tickets          | Planned     |
 | Durable request log (WAL) + crash recovery   | Done        |
-| Session state machine                        | In progress |
+| Session state machine                        | Done        |
 | Remote symlinks                              | In progress |
 | Remote hard links                            | In progress |
 | Request resolution (accept / reject)         | In progress |

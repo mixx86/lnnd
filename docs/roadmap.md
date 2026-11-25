@@ -43,7 +43,7 @@ See [architecture.md](architecture.md#inbound-request-lifecycle).
       the inbound handshake.
 - [x] IPC sends requests through the outbox (tags + pending message), and
       outbound sessions also send pending `RECOVER_REQUEST`s.
-- [ ] Session state machine: explicit states and transitions, reject
+- [x] Session state machine: explicit states and transitions, reject
       messages that are invalid for the current state with
       `ErrInvalidState`.
 
