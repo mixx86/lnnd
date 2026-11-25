@@ -20,10 +20,26 @@ A request is something a peer is asked to do. Fields common to every request:
 
 | Field  | Meaning |
 |--------|---------|
-| `kind` | What is asked, for `send` (see the table below). |
+| `kind` | What is asked, for `send` (see the kinds below). `list` will take it as a filter. |
 | `ip`   | The peer's IP address, required by `send`. Hostnames are not accepted. |
 
-Ops: `send` asks the peer named by `ip` (or by `uuid`, see below) for a request of the given `kind`.
+Every op acts on requests, so every one goes in `"type": "request"`. Accepting or rejecting is not a type of its own: the `RESOLUTION` the peer gets is what the op causes on the wire, not what the client asks for.
+
+| Op       | Status |
+|----------|--------|
+| `send`   | Asks the peer named by `ip` (or by `uuid`, see below) for a request of the given `kind`. |
+| `accept` | Planned: accepts a pending request, named by its `id`. |
+| `reject` | Planned: rejects a pending request, named by its `id`. |
+| `list`   | Planned: lists requests, those of `kind` only when it is given. |
+
+`accept` and `reject` take no `kind`: the request they name already has one. The planned ops are recognized, but for now the daemon only logs a TODO and closes the connection without a response; `id` is not a field yet.
+
+```json
+{ "type": "request", "op": "send",   "kind": "symlink", "ip": "192.168.1.34", "src": "/path/to/file", "dst": "/home/me/link" }
+{ "type": "request", "op": "accept", "id": 42 }
+{ "type": "request", "op": "reject", "id": 42 }
+{ "type": "request", "op": "list",   "kind": "symlink" }
+```
 
 | Kind       | Fields         | Status |
 |------------|----------------|--------|
@@ -36,10 +52,6 @@ Link fields:
 |-------|---------|
 | `src` | Path of the file on this machine, the sender's, required. It is cleaned and made absolute; a relative path is taken from `/`. |
 | `dst` | Destination path on the peer's machine (optional). The peer rejects a relative `dst`, which the client sees as `ErrPeer`. |
-
-```json
-{ "type": "request", "op": "send", "kind": "symlink", "ip": "192.168.1.34", "src": "/path/to/file", "dst": "/home/me/link" }
-```
 
 To send, the daemon reuses the session of the peer named by `uuid` if one is open, and otherwise dials `ip` and runs the outbound handshake. It then logs the request in the [requests WAL](architecture.md#requests-wal-requests) and waits until it is durable, puts the `SYMLINK_REQUEST` in the [outbox](architecture.md#outbox), sends it and waits for the peer's answer; dialing and the exchange with the peer have 5 s together, which the logging also counts against. Code `0` means the peer answered `OK`: it stored the request durably and the request is pending, not accepted (see [the inbound request lifecycle](architecture.md#inbound-request-lifecycle)).
 
