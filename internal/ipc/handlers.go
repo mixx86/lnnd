@@ -118,20 +118,31 @@ func HandleMessage(
 	}
 }
 
-// HandleRequest only gets the requests that ParseMessage found no struct
-// for, so all it can do is tell the client what it did not recognize.
+// A send reaches HandleRequest only when ParseMessage found no struct for
+// its kind.
 func HandleRequest(req *Request, conn net.Conn) {
-	if req.Op == "send" {
+	switch req.Op {
+	case "send":
 		log.Printf("unknown kind: %v", req.Kind)
 		SendErr(
 			conn,
 			ErrInvalidRequest,
 			fmt.Errorf("unknown kind: %v", req.Kind),
 		)
-		return
+	case "accept":
+		log.Printf("TODO: accept request")
+	case "reject":
+		log.Printf("TODO: reject request")
+	case "list":
+		log.Printf("TODO: list requests")
+	default:
+		log.Printf("unknown operation: %v", req.Op)
+		SendErr(
+			conn,
+			ErrUnknownOp,
+			fmt.Errorf("unknown operation: %v", req.Op),
+		)
 	}
-	log.Printf("unknown operation: %v", req.Op)
-	SendErr(conn, ErrUnknownOp, fmt.Errorf("unknown operation: %v", req.Op))
 }
 
 func HandleLinkRequest(
